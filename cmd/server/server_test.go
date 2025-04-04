@@ -102,13 +102,13 @@ func TestServer(t *testing.T) {
 	for _, tc := range ttPost {
 		t.Run("Post_"+tc.name, func(t *testing.T) {
 			resp, err := client.Post(tc.url, nil, tc.header)
-			defer require.NoError(t, resp.Body.Close())
 			require.NoError(t, err)
 			require.Equal(t, tc.expStatusCode, resp.StatusCode)
 			if tc.expStatusCode == http.StatusOK {
 				require.Equal(t, tc.expHeader.Get("Content-Type"), resp.Header.Get("Content-Type"))
 				require.Equal(t, "0", resp.Header.Get("Content-Length"))
 			}
+			require.NoError(t, resp.Body.Close())
 		})
 	}
 
@@ -157,17 +157,16 @@ func TestServer(t *testing.T) {
 	for _, tc := range ttGet {
 		t.Run("Get_"+tc.name, func(t *testing.T) {
 			resp, err := client.Get(tc.url, tc.header)
-			defer require.NoError(t, resp.Body.Close())
 			require.NoError(t, err)
 			require.Equal(t, tc.expStatusCode, resp.StatusCode)
 			if tc.expStatusCode == http.StatusOK {
 				require.Equal(t, expHeader.Get("Content-Type"), resp.Header.Get("Content-Type"))
-
 				buf, err := io.ReadAll(resp.Body)
 				require.NoError(t, err)
 				require.NotZero(t, resp.Header.Get("Content-Length"))
 				require.Equal(t, []byte(tc.expData), buf)
 			}
+			require.NoError(t, resp.Body.Close())
 		})
 	}
 }
