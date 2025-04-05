@@ -2,37 +2,32 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"math/rand/v2"
-	"net/http"
 	"runtime"
 	"time"
 
-	"github.com/gojek/heimdall/v7/httpclient"
-
 	"github.com/ASRafalsky/telemetry/internal"
-	"github.com/ASRafalsky/telemetry/internal/storage"
 )
 
-func poller(ctx context.Context, pollInterval, sendInterval time.Duration, client *httpclient.Client) {
-	gaugeRepo := storage.New[string, []byte]()
-	counterRepo := storage.New[string, []byte]()
+func poll(ctx context.Context, pollInterval time.Duration, repos map[string]*repositoryUnit) {
 
 	pollTimer := time.NewTicker(pollInterval)
 	defer pollTimer.Stop()
-	sendTimer := time.NewTicker(sendInterval)
-	defer sendTimer.Stop()
 
 	for ctx.Err() == nil {
 		select {
 		case <-ctx.Done():
 			return
 		case <-pollTimer.C:
-			getGaugeMetrics(gaugeRepo)
-			getCounterMetrics(counterRepo)
-		case <-sendTimer.C:
-			sendCounterData(ctx, counterRepo, client)
-			sendGaugeData(ctx, gaugeRepo, client)
+			for name := range repos {
+				switch name {
+				case gauge:
+					getGaugeMetrics(repos[name])
+				case counter:
+					getCounterMetrics(repos[name])
+				default:
+				}
+			}
 		}
 	}
 }
@@ -46,43 +41,10 @@ type Repository interface {
 	Delete(k string)
 }
 
-const url = "http://localhost:8080"
+func getCounterMetrics(repo *repositoryUnit) {
+	repo.mx.Lock()
+	defer repo.mx.Unlock()
 
-func sendCounterData(ctx context.Context, repo Repository, client *httpclient.Client) {
-	header := http.Header{
-		"Content-Type": []string{"text/plain"},
-	}
-	err := repo.ForEach(ctx, func(k string, v []byte) error {
-		urlData := url + "/update/counter/" + k + "/" + internal.BytesToCounter(v).String()
-		resp, err := client.Post(urlData, nil, header)
-		if err != nil {
-			return err
-		}
-		return resp.Body.Close()
-	})
-	if err != nil {
-		fmt.Printf("[poller/counter] Failed to send data; %s\n", err)
-	}
-}
-
-func sendGaugeData(ctx context.Context, repo Repository, client *httpclient.Client) {
-	header := http.Header{
-		"Content-Type": []string{"text/plain"},
-	}
-	err := repo.ForEach(ctx, func(k string, v []byte) error {
-		urlData := url + "/update/counter/" + k + "/" + internal.BytesToGauge(v).String()
-		resp, err := client.Post(urlData, nil, header)
-		if err != nil {
-			return err
-		}
-		return resp.Body.Close()
-	})
-	if err != nil {
-		fmt.Printf("[poller/counter] Failed to send data; %s\n", err)
-	}
-}
-
-func getCounterMetrics(repo Repository) {
 	cnt, ok := repo.Get("PollCount")
 	if !ok {
 		repo.Set("PollCount", internal.CounterToBytes(internal.Counter(1)))
@@ -93,9 +55,12 @@ func getCounterMetrics(repo Repository) {
 	repo.Set("PollCount", internal.CounterToBytes(cntToSet))
 }
 
-func getGaugeMetrics(repo Repository) {
+func getGaugeMetrics(repo *repositoryUnit) {
 	memStats := runtime.MemStats{}
 	runtime.ReadMemStats(&memStats)
+
+	repo.mx.Lock()
+	defer repo.mx.Unlock()
 
 	repo.Set("Alloc", internal.GaugeToBytes(internal.Gauge(memStats.Alloc)))
 	repo.Set("BuckHashSys", internal.GaugeToBytes(internal.Gauge(memStats.BuckHashSys)))

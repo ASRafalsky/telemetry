@@ -1,6 +1,8 @@
 package main
 
 import (
+	"flag"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -11,7 +13,11 @@ import (
 )
 
 func main() {
-	log.Fatal(http.ListenAndServe(":8080", newRouter()))
+	adress := flag.String("a", "localhost:8080", "server address")
+	flag.Parse()
+	fmt.Printf("Server address: %s", *adress)
+
+	log.Fatal(http.ListenAndServe(*adress, newRouter()))
 }
 
 func newRouter() http.Handler {
