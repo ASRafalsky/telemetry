@@ -235,6 +235,5 @@ func Test_POST_GET(t *testing.T) {
 		for _, key := range []string{"html", "Keys", "gaugevalname", "cntvalname"} {
 			assert.Contains(t, string(buf), key)
 		}
-		t.Log(string(buf))
 	})
 }

@@ -12,7 +12,7 @@ import (
 	"github.com/ASRafalsky/telemetry/internal"
 )
 
-func gaugePostHandler(repo GaugeRepository) func(http.ResponseWriter, *http.Request) {
+func gaugePostHandler(repo Repository) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		key := getName(req)
 		if len(key) == 0 {
@@ -24,12 +24,12 @@ func gaugePostHandler(repo GaugeRepository) func(http.ResponseWriter, *http.Requ
 			res.WriteHeader(http.StatusBadRequest)
 		}
 
-		repo.Set(strings.ToLower(key), value)
+		repo.Set(strings.ToLower(key), internal.GaugeToBytes(value))
 		res.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	}
 }
 
-func gaugeGetHandler(repo GaugeRepository) func(http.ResponseWriter, *http.Request) {
+func gaugeGetHandler(repo Repository) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		key := getName(req)
 		if len(key) == 0 {
@@ -37,9 +37,9 @@ func gaugeGetHandler(repo GaugeRepository) func(http.ResponseWriter, *http.Reque
 			return
 		}
 
-		if val, ok := repo.Get(strings.ToLower(key)); ok {
+		if value, ok := repo.Get(strings.ToLower(key)); ok {
 			res.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			_, err := io.WriteString(res, val.String())
+			_, err := io.WriteString(res, internal.BytesToGauge(value).String())
 			if err != nil {
 				http.Error(res, err.Error(), http.StatusInternalServerError)
 				return
@@ -49,7 +49,7 @@ func gaugeGetHandler(repo GaugeRepository) func(http.ResponseWriter, *http.Reque
 	}
 }
 
-func counterPostHandler(repo CounterRepository) func(http.ResponseWriter, *http.Request) {
+func counterPostHandler(repo Repository) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		key := getName(req)
 		if len(key) == 0 {
@@ -64,14 +64,14 @@ func counterPostHandler(repo CounterRepository) func(http.ResponseWriter, *http.
 		}
 
 		if previousValue, ok := repo.Get(strings.ToLower(key)); ok {
-			value += previousValue
+			value += internal.BytesToCounter(previousValue)
 		}
-		repo.Set(strings.ToLower(key), value)
+		repo.Set(strings.ToLower(key), internal.CounterToBytes(value))
 		res.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	}
 }
 
-func counterGetHandler(repo CounterRepository) func(http.ResponseWriter, *http.Request) {
+func counterGetHandler(repo Repository) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		key := getName(req)
 		if len(key) == 0 {
@@ -79,9 +79,9 @@ func counterGetHandler(repo CounterRepository) func(http.ResponseWriter, *http.R
 			return
 		}
 
-		if val, ok := repo.Get(strings.ToLower(key)); ok {
+		if value, ok := repo.Get(strings.ToLower(key)); ok {
 			res.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			_, err := io.WriteString(res, val.String())
+			_, err := io.WriteString(res, internal.BytesToCounter(value).String())
 			if err != nil {
 				http.Error(res, err.Error(), http.StatusInternalServerError)
 				return
@@ -107,7 +107,7 @@ func failureGetHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-func allGetHandler(tmpl *template.Template, repos ...CommonRepository) func(http.ResponseWriter, *http.Request) {
+func allGetHandler(tmpl *template.Template, repos ...Repository) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		if len(repos) == 0 {
 			res.WriteHeader(http.StatusNotFound)
@@ -136,22 +136,11 @@ func getName(req *http.Request) string {
 	return chi.URLParam(req, "name")
 }
 
-type CommonRepository interface {
+type Repository interface {
+	Set(k string, v []byte)
+	Get(k string) ([]byte, bool)
+	ForEach(ctx context.Context, fn func(k string, v []byte) error) error
 	Keys() []string
 	Size() int
 	Delete(k string)
-}
-
-type GaugeRepository interface {
-	CommonRepository
-	Set(k string, v internal.Gauge)
-	Get(k string) (internal.Gauge, bool)
-	ForEach(ctx context.Context, fn func(k string, v internal.Gauge) error) error
-}
-
-type CounterRepository interface {
-	CommonRepository
-	Set(k string, v internal.Counter)
-	Get(k string) (internal.Counter, bool)
-	ForEach(ctx context.Context, fn func(k string, v internal.Counter) error) error
 }

@@ -51,6 +51,9 @@ func TestGauge(t *testing.T) {
 			require.NoError(t, err)
 			if !math.IsNaN(float64(testVal)) {
 				require.Equal(t, tc.expected, testVal)
+
+				bytesValue := GaugeToBytes(testVal)
+				require.Equal(t, tc.expected, BytesToGauge(bytesValue))
 			}
 			require.Equal(t, tc.stringVal, testVal.String())
 		})
@@ -96,6 +99,9 @@ func TestCounter(t *testing.T) {
 				require.ErrorContains(t, err, tc.err.Error())
 				return
 			}
+			bytesValue := CounterToBytes(testVal)
+			require.Equal(t, tc.expected, BytesToCounter(bytesValue))
+
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, testVal)
 			require.Equal(t, tc.stringVal, testVal.String())

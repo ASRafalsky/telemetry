@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/ASRafalsky/telemetry/internal"
 	"github.com/ASRafalsky/telemetry/internal/storage"
 )
 
@@ -16,8 +15,8 @@ func main() {
 }
 
 func newRouter() http.Handler {
-	gaugeRepo := storage.New[string, internal.Gauge]()
-	counterRepo := storage.New[string, internal.Counter]()
+	gaugeRepo := storage.New[string, []byte]()
+	counterRepo := storage.New[string, []byte]()
 
 	r := chi.NewRouter()
 	r.Route("/", func(r chi.Router) {
