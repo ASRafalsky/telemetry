@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"html/template"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/ASRafalsky/telemetry/internal"
 )
 
 func gaugePostHandler(repo GaugeRepository) func(http.ResponseWriter, *http.Request) {
@@ -17,12 +19,12 @@ func gaugePostHandler(repo GaugeRepository) func(http.ResponseWriter, *http.Requ
 			res.WriteHeader(http.StatusNotFound)
 		}
 
-		floatValue, err := strconv.ParseFloat(chi.URLParam(req, "value"), 64)
+		value, err := internal.ParseGauge(chi.URLParam(req, "value"))
 		if err != nil {
 			res.WriteHeader(http.StatusBadRequest)
 		}
 
-		repo.Set(strings.ToLower(key), floatValue)
+		repo.Set(strings.ToLower(key), value)
 		res.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	}
 }
@@ -36,11 +38,10 @@ func gaugeGetHandler(repo GaugeRepository) func(http.ResponseWriter, *http.Reque
 		}
 
 		if val, ok := repo.Get(strings.ToLower(key)); ok {
-			valStr := strconv.FormatFloat(val, 'g', -1, 64)
 			res.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			_, err := io.WriteString(res, valStr)
+			_, err := io.WriteString(res, val.String())
 			if err != nil {
-				res.WriteHeader(http.StatusInternalServerError)
+				http.Error(res, err.Error(), http.StatusInternalServerError)
 				return
 			}
 		}
@@ -56,13 +57,16 @@ func counterPostHandler(repo CounterRepository) func(http.ResponseWriter, *http.
 			return
 		}
 
-		intValue, err := strconv.ParseInt(chi.URLParam(req, "value"), 10, 64)
+		value, err := internal.ParseCounter(chi.URLParam(req, "value"))
 		if err != nil {
 			res.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		repo.Set(strings.ToLower(key), intValue)
+		if previousValue, ok := repo.Get(strings.ToLower(key)); ok {
+			value += previousValue
+		}
+		repo.Set(strings.ToLower(key), value)
 		res.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	}
 }
@@ -76,11 +80,10 @@ func counterGetHandler(repo CounterRepository) func(http.ResponseWriter, *http.R
 		}
 
 		if val, ok := repo.Get(strings.ToLower(key)); ok {
-			valStr := strconv.FormatInt(val, 10)
 			res.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			_, err := io.WriteString(res, valStr)
+			_, err := io.WriteString(res, val.String())
 			if err != nil {
-				res.WriteHeader(http.StatusInternalServerError)
+				http.Error(res, err.Error(), http.StatusInternalServerError)
 				return
 			}
 		}
@@ -104,16 +107,27 @@ func failureGetHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-func allGetHandler(repos []CommonRepository) func(http.ResponseWriter, *http.Request) {
+func allGetHandler(tmpl *template.Template, repos ...CommonRepository) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
-		var result []string
+		if len(repos) == 0 {
+			res.WriteHeader(http.StatusNotFound)
+		}
+
+		totalEntryCnt := 0
+		for _, repo := range repos {
+			totalEntryCnt += repo.Size()
+		}
+
+		result := make([]string, totalEntryCnt)
 		for _, repo := range repos {
 			result = append(result, repo.Keys()...)
 		}
 
-		res.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		if _, err := res.Write([]byte(strings.Join(result, ","))); err != nil {
-			res.WriteHeader(http.StatusInternalServerError)
+		res.Header().Set("Content-Type", "text/html; charset=utf-8")
+		err := tmpl.Execute(res, result)
+		if err != nil {
+			http.Error(res, err.Error(), http.StatusInternalServerError)
+			return
 		}
 	}
 }
@@ -130,14 +144,14 @@ type CommonRepository interface {
 
 type GaugeRepository interface {
 	CommonRepository
-	Set(k string, v float64)
-	Get(k string) (float64, bool)
-	ForEach(ctx context.Context, fn func(k string, v float64) error) error
+	Set(k string, v internal.Gauge)
+	Get(k string) (internal.Gauge, bool)
+	ForEach(ctx context.Context, fn func(k string, v internal.Gauge) error) error
 }
 
 type CounterRepository interface {
 	CommonRepository
-	Set(k string, v int64)
-	Get(k string) (int64, bool)
-	ForEach(ctx context.Context, fn func(k string, v int64) error) error
+	Set(k string, v internal.Counter)
+	Get(k string) (internal.Counter, bool)
+	ForEach(ctx context.Context, fn func(k string, v internal.Counter) error) error
 }

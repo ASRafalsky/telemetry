@@ -6,30 +6,17 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"runtime"
-	"strconv"
 	"time"
 
 	"github.com/gojek/heimdall/v7/httpclient"
 
+	"github.com/ASRafalsky/telemetry/internal"
 	"github.com/ASRafalsky/telemetry/internal/storage"
 )
 
-type (
-	gauge   float64
-	counter int64
-)
-
-func (g gauge) String() string {
-	return strconv.FormatFloat(float64(g), 'g', -1, 64)
-}
-
-func (c counter) String() string {
-	return strconv.FormatInt(int64(c), 10)
-}
-
 func poller(ctx context.Context, pollInterval, sendInterval time.Duration, client *httpclient.Client) {
-	gaugeRepo := storage.New[string, gauge]()
-	counterRepo := storage.New[string, counter]()
+	gaugeRepo := storage.New[string, internal.Gauge]()
+	counterRepo := storage.New[string, internal.Counter]()
 
 	pollTimer := time.NewTicker(pollInterval)
 	defer pollTimer.Stop()
@@ -57,16 +44,16 @@ type CommonRepository interface {
 
 type GaugeRepository interface {
 	CommonRepository
-	Set(k string, v gauge)
-	Get(k string) (gauge, bool)
-	ForEach(ctx context.Context, fn func(k string, v gauge) error) error
+	Set(k string, v internal.Gauge)
+	Get(k string) (internal.Gauge, bool)
+	ForEach(ctx context.Context, fn func(k string, v internal.Gauge) error) error
 }
 
 type CounterRepository interface {
 	CommonRepository
-	Set(k string, v counter)
-	Get(k string) (counter, bool)
-	ForEach(ctx context.Context, fn func(k string, v counter) error) error
+	Set(k string, v internal.Counter)
+	Get(k string) (internal.Counter, bool)
+	ForEach(ctx context.Context, fn func(k string, v internal.Counter) error) error
 }
 
 const url = "http://localhost:8080"
@@ -75,7 +62,7 @@ func sendCounterData(ctx context.Context, repo CounterRepository, client *httpcl
 	header := http.Header{
 		"Content-Type": []string{"text/plain"},
 	}
-	err := repo.ForEach(ctx, func(k string, v counter) error {
+	err := repo.ForEach(ctx, func(k string, v internal.Counter) error {
 		urlData := url + "/update/counter/" + k + "/" + v.String()
 		resp, err := client.Post(urlData, nil, header)
 		if err != nil {
@@ -92,7 +79,7 @@ func sendGaugeData(ctx context.Context, repo GaugeRepository, client *httpclient
 	header := http.Header{
 		"Content-Type": []string{"text/plain"},
 	}
-	err := repo.ForEach(ctx, func(k string, v gauge) error {
+	err := repo.ForEach(ctx, func(k string, v internal.Gauge) error {
 		urlData := url + "/update/counter/" + k + "/" + v.String()
 		resp, err := client.Post(urlData, nil, header)
 		if err != nil {
@@ -119,32 +106,32 @@ func getGaugeMetrics(repo GaugeRepository) {
 	memStats := runtime.MemStats{}
 	runtime.ReadMemStats(&memStats)
 
-	repo.Set("Alloc", gauge(memStats.Alloc))
-	repo.Set("BuckHashSys", gauge(memStats.BuckHashSys))
-	repo.Set("Frees", gauge(memStats.Frees))
-	repo.Set("GCCPUFraction", gauge(memStats.GCCPUFraction))
-	repo.Set("GCSys", gauge(memStats.GCSys))
-	repo.Set("HeapAlloc", gauge(memStats.HeapAlloc))
-	repo.Set("HeapIdle", gauge(memStats.HeapIdle))
-	repo.Set("HeapInuse", gauge(memStats.HeapInuse))
-	repo.Set("HeapObjects", gauge(memStats.HeapObjects))
-	repo.Set("HeapReleased", gauge(memStats.HeapReleased))
-	repo.Set("HeapSys", gauge(memStats.HeapSys))
-	repo.Set("LastGC", gauge(memStats.LastGC))
-	repo.Set("Lookups", gauge(memStats.Lookups))
-	repo.Set("MCacheInuse", gauge(memStats.MCacheInuse))
-	repo.Set("MCacheSys", gauge(memStats.MCacheSys))
-	repo.Set("MSpanInuse", gauge(memStats.MSpanInuse))
-	repo.Set("MSpanSys", gauge(memStats.MSpanSys))
-	repo.Set("Mallocs", gauge(memStats.Mallocs))
-	repo.Set("NextGC", gauge(memStats.NextGC))
-	repo.Set("NumForcedGC", gauge(memStats.NumForcedGC))
-	repo.Set("NumGC", gauge(memStats.NumGC))
-	repo.Set("OtherSys", gauge(memStats.OtherSys))
-	repo.Set("PauseTotalNs", gauge(memStats.PauseTotalNs))
-	repo.Set("StackInuse", gauge(memStats.StackInuse))
-	repo.Set("StackSys", gauge(memStats.StackSys))
-	repo.Set("Sys", gauge(memStats.Sys))
-	repo.Set("TotalAlloc", gauge(memStats.TotalAlloc))
-	repo.Set("RandomValue", gauge(rand.Float64()))
+	repo.Set("Alloc", internal.Gauge(memStats.Alloc))
+	repo.Set("BuckHashSys", internal.Gauge(memStats.BuckHashSys))
+	repo.Set("Frees", internal.Gauge(memStats.Frees))
+	repo.Set("GCCPUFraction", internal.Gauge(memStats.GCCPUFraction))
+	repo.Set("GCSys", internal.Gauge(memStats.GCSys))
+	repo.Set("HeapAlloc", internal.Gauge(memStats.HeapAlloc))
+	repo.Set("HeapIdle", internal.Gauge(memStats.HeapIdle))
+	repo.Set("HeapInuse", internal.Gauge(memStats.HeapInuse))
+	repo.Set("HeapObjects", internal.Gauge(memStats.HeapObjects))
+	repo.Set("HeapReleased", internal.Gauge(memStats.HeapReleased))
+	repo.Set("HeapSys", internal.Gauge(memStats.HeapSys))
+	repo.Set("LastGC", internal.Gauge(memStats.LastGC))
+	repo.Set("Lookups", internal.Gauge(memStats.Lookups))
+	repo.Set("MCacheInuse", internal.Gauge(memStats.MCacheInuse))
+	repo.Set("MCacheSys", internal.Gauge(memStats.MCacheSys))
+	repo.Set("MSpanInuse", internal.Gauge(memStats.MSpanInuse))
+	repo.Set("MSpanSys", internal.Gauge(memStats.MSpanSys))
+	repo.Set("Mallocs", internal.Gauge(memStats.Mallocs))
+	repo.Set("NextGC", internal.Gauge(memStats.NextGC))
+	repo.Set("NumForcedGC", internal.Gauge(memStats.NumForcedGC))
+	repo.Set("NumGC", internal.Gauge(memStats.NumGC))
+	repo.Set("OtherSys", internal.Gauge(memStats.OtherSys))
+	repo.Set("PauseTotalNs", internal.Gauge(memStats.PauseTotalNs))
+	repo.Set("StackInuse", internal.Gauge(memStats.StackInuse))
+	repo.Set("StackSys", internal.Gauge(memStats.StackSys))
+	repo.Set("Sys", internal.Gauge(memStats.Sys))
+	repo.Set("TotalAlloc", internal.Gauge(memStats.TotalAlloc))
+	repo.Set("RandomValue", internal.Gauge(rand.Float64()))
 }

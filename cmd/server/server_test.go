@@ -9,10 +9,11 @@ import (
 	"time"
 
 	"github.com/gojek/heimdall/v7/httpclient"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestServer(t *testing.T) {
+func TestServerStatuses(t *testing.T) {
 	srv := httptest.NewServer(newRouter())
 	defer srv.Close()
 
@@ -169,4 +170,71 @@ func TestServer(t *testing.T) {
 			require.NoError(t, resp.Body.Close())
 		})
 	}
+}
+
+func Test_POST_GET(t *testing.T) {
+	srv := httptest.NewServer(newRouter())
+	defer srv.Close()
+	// Create a new HTTP client with a default timeout
+	timeout := 1000 * time.Millisecond
+	client := httpclient.NewClient(httpclient.WithHTTPTimeout(timeout))
+
+	header := http.Header{
+		"Content-Type": []string{"text/plain"},
+	}
+
+	expCounter := 0
+	for i := range 3 {
+		expCounter += i
+		iStr := strconv.Itoa(i)
+		expCounterStr := strconv.Itoa(expCounter)
+		t.Run("Post_counter_"+iStr, func(t *testing.T) {
+			resp, err := client.Post(srv.URL+"/update/counter/cntValName/"+iStr, nil, header)
+			assert.NoError(t, err)
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+			assert.NoError(t, resp.Body.Close())
+		})
+
+		t.Run("Post_gauge_"+iStr, func(t *testing.T) {
+			val := strconv.FormatFloat(float64(i), 'f', -1, 64)
+			resp, err := client.Post(srv.URL+"/update/gauge/gaugeValName/"+val, nil, header)
+			assert.NoError(t, err)
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+			assert.NoError(t, resp.Body.Close())
+		})
+
+		t.Run("Get_counter_"+iStr, func(t *testing.T) {
+			resp, err := client.Get(srv.URL+"/value/counter/cntValName", header)
+			assert.NoError(t, err)
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+			buf, err := io.ReadAll(resp.Body)
+			assert.NoError(t, err)
+			assert.Equal(t, expCounterStr, string(buf))
+			assert.NoError(t, resp.Body.Close())
+		})
+
+		t.Run("Get_gauge_"+iStr, func(t *testing.T) {
+			resp, err := client.Get(srv.URL+"/value/gauge/gaugeValName", header)
+			assert.NoError(t, err)
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+			buf, err := io.ReadAll(resp.Body)
+			assert.NoError(t, err)
+			assert.Equal(t, iStr, string(buf))
+			assert.NoError(t, resp.Body.Close())
+		})
+	}
+
+	t.Run("Get_key_list", func(t *testing.T) {
+		resp, err := client.Get(srv.URL+"/", header)
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.NoError(t, err)
+		assert.NotZero(t, resp.Header.Get("Content-Length"))
+		assert.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
+		buf, err := io.ReadAll(resp.Body)
+		assert.NoError(t, err)
+		for _, key := range []string{"html", "Keys", "gaugevalname", "cntvalname"} {
+			assert.Contains(t, string(buf), key)
+		}
+		t.Log(string(buf))
+	})
 }

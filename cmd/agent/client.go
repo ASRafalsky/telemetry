@@ -8,6 +8,6 @@ import (
 
 func NewClient() *httpclient.Client {
 	// Create a new HTTP client with a default timeout
-	timeout := 1000 * time.Millisecond
+	timeout := 100000 * time.Millisecond
 	return httpclient.NewClient(httpclient.WithHTTPTimeout(timeout))
 }

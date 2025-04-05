@@ -1,11 +1,13 @@
 package main
 
 import (
+	"html/template"
 	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/ASRafalsky/telemetry/internal"
 	"github.com/ASRafalsky/telemetry/internal/storage"
 )
 
@@ -14,8 +16,8 @@ func main() {
 }
 
 func newRouter() http.Handler {
-	gaugeRepo := storage.New[string, float64]()
-	counterRepo := storage.New[string, int64]()
+	gaugeRepo := storage.New[string, internal.Gauge]()
+	counterRepo := storage.New[string, internal.Counter]()
 
 	r := chi.NewRouter()
 	r.Route("/", func(r chi.Router) {
@@ -30,7 +32,27 @@ func newRouter() http.Handler {
 			r.Get("/{type}/{name}", failureGetHandler())
 		})
 		r.Post("/", failurePostHandler())
-		r.Get("/", allGetHandler([]CommonRepository{gaugeRepo, counterRepo}))
+		r.Get("/", allGetHandler(prepareTemplate(), gaugeRepo, counterRepo))
 	})
 	return r
+}
+
+func prepareTemplate() *template.Template {
+	tmpl := `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Keys</title>
+</head>
+<body>
+    <h1>Keys:</h1>
+    <ul>
+        {{range .}}
+        <li>{{.}}</li>
+        {{end}}
+    </ul>
+</body>
+</html>
+`
+	return template.Must(template.New("list").Parse(tmpl))
 }
