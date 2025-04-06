@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"html/template"
 	"log"
@@ -13,11 +12,10 @@ import (
 )
 
 func main() {
-	adress := flag.String("a", "localhost:8080", "server address")
-	flag.Parse()
-	fmt.Printf("Server address: %s", *adress)
+	address := parseFlags()
+	fmt.Printf("Server address: %s\n", address)
 
-	log.Fatal(http.ListenAndServe(*adress, newRouter()))
+	log.Fatal(http.ListenAndServe(address, newRouter()))
 }
 
 func newRouter() http.Handler {

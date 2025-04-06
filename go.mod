@@ -8,6 +8,7 @@ require (
 	github.com/go-chi/chi/v5 v5.2.1
 	github.com/gojek/heimdall/v7 v7.0.3
 	github.com/stretchr/testify v1.10.0
+	go.uber.org/multierr v1.11.0
 )
 
 require (

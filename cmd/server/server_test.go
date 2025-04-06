@@ -226,14 +226,15 @@ func Test_POST_GET(t *testing.T) {
 
 	t.Run("Get_key_list", func(t *testing.T) {
 		resp, err := client.Get(srv.URL+"/", header)
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
-		assert.NoError(t, err)
-		assert.NotZero(t, resp.Header.Get("Content-Length"))
-		assert.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		require.NoError(t, err)
+		require.NotZero(t, resp.Header.Get("Content-Length"))
+		require.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
 		buf, err := io.ReadAll(resp.Body)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		for _, key := range []string{"html", "Keys", "gaugevalname", "cntvalname"} {
 			assert.Contains(t, string(buf), key)
 		}
+		require.NoError(t, resp.Body.Close())
 	})
 }

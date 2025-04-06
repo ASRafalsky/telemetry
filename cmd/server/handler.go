@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/ASRafalsky/telemetry/internal"
+	"github.com/ASRafalsky/telemetry/internal/types"
 )
 
 func gaugePostHandler(repo Repository) func(http.ResponseWriter, *http.Request) {
@@ -19,12 +19,12 @@ func gaugePostHandler(repo Repository) func(http.ResponseWriter, *http.Request) 
 			res.WriteHeader(http.StatusNotFound)
 		}
 
-		value, err := internal.ParseGauge(chi.URLParam(req, "value"))
+		value, err := types.ParseGauge(chi.URLParam(req, "value"))
 		if err != nil {
 			res.WriteHeader(http.StatusBadRequest)
 		}
 
-		repo.Set(strings.ToLower(key), internal.GaugeToBytes(value))
+		repo.Set(strings.ToLower(key), types.GaugeToBytes(value))
 		res.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	}
 }
@@ -39,7 +39,7 @@ func gaugeGetHandler(repo Repository) func(http.ResponseWriter, *http.Request) {
 
 		if value, ok := repo.Get(strings.ToLower(key)); ok {
 			res.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			_, err := io.WriteString(res, internal.BytesToGauge(value).String())
+			_, err := io.WriteString(res, types.BytesToGauge(value).String())
 			if err != nil {
 				http.Error(res, err.Error(), http.StatusInternalServerError)
 				return
@@ -57,16 +57,16 @@ func counterPostHandler(repo Repository) func(http.ResponseWriter, *http.Request
 			return
 		}
 
-		value, err := internal.ParseCounter(chi.URLParam(req, "value"))
+		value, err := types.ParseCounter(chi.URLParam(req, "value"))
 		if err != nil {
 			res.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
 		if previousValue, ok := repo.Get(strings.ToLower(key)); ok {
-			value += internal.BytesToCounter(previousValue)
+			value += types.BytesToCounter(previousValue)
 		}
-		repo.Set(strings.ToLower(key), internal.CounterToBytes(value))
+		repo.Set(strings.ToLower(key), types.CounterToBytes(value))
 		res.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	}
 }
@@ -81,7 +81,7 @@ func counterGetHandler(repo Repository) func(http.ResponseWriter, *http.Request)
 
 		if value, ok := repo.Get(strings.ToLower(key)); ok {
 			res.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			_, err := io.WriteString(res, internal.BytesToCounter(value).String())
+			_, err := io.WriteString(res, types.BytesToCounter(value).String())
 			if err != nil {
 				http.Error(res, err.Error(), http.StatusInternalServerError)
 				return
