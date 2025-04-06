@@ -8,7 +8,7 @@ import (
 
 func TestParseFlags_Default(t *testing.T) {
 	addr, polling, report := parseFlags()
-	require.Equal(t, addr, "http://:8080")
-	require.Equal(t, polling, 2)
-	require.Equal(t, report, 10)
+	require.Equal(t, ":8080", addr)
+	require.Equal(t, 2, polling)
+	require.Equal(t, 10, report)
 }

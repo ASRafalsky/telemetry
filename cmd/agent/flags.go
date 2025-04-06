@@ -15,7 +15,7 @@ func parseFlags() (addr string, polling int, report int) {
 		addr = envRunAddr
 	}
 	if addr == "" {
-		flag.StringVar(&addr, "a", "http://:8080", "address and port to run server")
+		flag.StringVar(&addr, "a", ":8080", "address and port to run server")
 	}
 
 	if envReportInterval := os.Getenv("REPORT_INTERVAL"); envReportInterval != "" {
