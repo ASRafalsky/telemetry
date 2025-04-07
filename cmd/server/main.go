@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/ASRafalsky/telemetry/cmd/server/handlers"
 	"github.com/ASRafalsky/telemetry/internal/storage"
 )
 
@@ -25,17 +26,17 @@ func newRouter() http.Handler {
 	r := chi.NewRouter()
 	r.Route("/", func(r chi.Router) {
 		r.Route("/update", func(r chi.Router) {
-			r.Post("/gauge/{name}/{value}", gaugePostHandler(gaugeRepo))
-			r.Post("/counter/{name}/{value}", counterPostHandler(counterRepo))
-			r.Post("/{type}/{name}/{value}", failurePostHandler())
+			r.Post("/gauge/{name}/{value}", handlers.GaugePostHandler(gaugeRepo))
+			r.Post("/counter/{name}/{value}", handlers.CounterPostHandler(counterRepo))
+			r.Post("/{type}/{name}/{value}", handlers.FailurePostHandler())
 		})
 		r.Route("/value", func(r chi.Router) {
-			r.Get("/gauge/{name}", gaugeGetHandler(gaugeRepo))
-			r.Get("/counter/{name}", counterGetHandler(counterRepo))
-			r.Get("/{type}/{name}", failureGetHandler())
+			r.Get("/gauge/{name}", handlers.GaugeGetHandler(gaugeRepo))
+			r.Get("/counter/{name}", handlers.CounterGetHandler(counterRepo))
+			r.Get("/{type}/{name}", handlers.FailureGetHandler())
 		})
-		r.Post("/", failurePostHandler())
-		r.Get("/", allGetHandler(prepareTemplate(), gaugeRepo, counterRepo))
+		r.Post("/", handlers.FailurePostHandler())
+		r.Get("/", handlers.AllGetHandler(prepareTemplate(), gaugeRepo, counterRepo))
 	})
 	return r
 }

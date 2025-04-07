@@ -11,7 +11,7 @@ import (
 	"github.com/ASRafalsky/telemetry/internal/types"
 )
 
-func Poll(ctx context.Context, interval time.Duration, repos map[string]*repository.RepositoryUnit) {
+func Poll(ctx context.Context, interval time.Duration, repos map[string]repository.Repository) {
 	fmt.Printf("Polling started with interval %v\n", interval)
 	pollTimer := time.NewTicker(interval)
 	defer pollTimer.Stop()
@@ -34,10 +34,7 @@ func Poll(ctx context.Context, interval time.Duration, repos map[string]*reposit
 	}
 }
 
-func getCounterMetrics(repo *repository.RepositoryUnit) {
-	repo.Mx.Lock()
-	defer repo.Mx.Unlock()
-
+func getCounterMetrics(repo repository.Repository) {
 	cnt, ok := repo.Get("PollCount")
 	if !ok {
 		repo.Set("PollCount", types.CounterToBytes(types.Counter(0)))
@@ -48,12 +45,9 @@ func getCounterMetrics(repo *repository.RepositoryUnit) {
 	repo.Set("PollCount", types.CounterToBytes(cntToSet))
 }
 
-func getGaugeMetrics(repo *repository.RepositoryUnit) {
+func getGaugeMetrics(repo repository.Repository) {
 	memStats := runtime.MemStats{}
 	runtime.ReadMemStats(&memStats)
-
-	repo.Mx.Lock()
-	defer repo.Mx.Unlock()
 
 	repo.Set("Alloc", types.GaugeToBytes(types.Gauge(memStats.Alloc)))
 	repo.Set("BuckHashSys", types.GaugeToBytes(types.Gauge(memStats.BuckHashSys)))

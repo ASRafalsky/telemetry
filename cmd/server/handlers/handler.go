@@ -1,4 +1,4 @@
-package main
+package handlers
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/ASRafalsky/telemetry/internal/types"
 )
 
-func gaugePostHandler(repo Repository) func(http.ResponseWriter, *http.Request) {
+func GaugePostHandler(repo Repository) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		key := getName(req)
 		if len(key) == 0 {
@@ -29,7 +29,7 @@ func gaugePostHandler(repo Repository) func(http.ResponseWriter, *http.Request) 
 	}
 }
 
-func gaugeGetHandler(repo Repository) func(http.ResponseWriter, *http.Request) {
+func GaugeGetHandler(repo Repository) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		key := getName(req)
 		if len(key) == 0 {
@@ -49,7 +49,7 @@ func gaugeGetHandler(repo Repository) func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-func counterPostHandler(repo Repository) func(http.ResponseWriter, *http.Request) {
+func CounterPostHandler(repo Repository) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		key := getName(req)
 		if len(key) == 0 {
@@ -71,7 +71,7 @@ func counterPostHandler(repo Repository) func(http.ResponseWriter, *http.Request
 	}
 }
 
-func counterGetHandler(repo Repository) func(http.ResponseWriter, *http.Request) {
+func CounterGetHandler(repo Repository) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		key := getName(req)
 		if len(key) == 0 {
@@ -91,7 +91,7 @@ func counterGetHandler(repo Repository) func(http.ResponseWriter, *http.Request)
 	}
 }
 
-func failurePostHandler() func(http.ResponseWriter, *http.Request) {
+func FailurePostHandler() func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		key := getName(req)
 		if len(key) == 0 {
@@ -101,13 +101,13 @@ func failurePostHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-func failureGetHandler() func(http.ResponseWriter, *http.Request) {
+func FailureGetHandler() func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		res.WriteHeader(http.StatusBadRequest)
 	}
 }
 
-func allGetHandler(tmpl *template.Template, repos ...Repository) func(http.ResponseWriter, *http.Request) {
+func AllGetHandler(tmpl *template.Template, repos ...Repository) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		if len(repos) == 0 {
 			res.WriteHeader(http.StatusNotFound)
@@ -120,7 +120,10 @@ func allGetHandler(tmpl *template.Template, repos ...Repository) func(http.Respo
 
 		result := make([]string, totalEntryCnt)
 		for _, repo := range repos {
-			result = append(result, repo.Keys()...)
+			_ = repo.ForEach(context.Background(), func(k string, _ []byte) error {
+				result = append(result, k)
+				return nil
+			})
 		}
 
 		res.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -140,7 +143,6 @@ type Repository interface {
 	Set(k string, v []byte)
 	Get(k string) ([]byte, bool)
 	ForEach(ctx context.Context, fn func(k string, v []byte) error) error
-	Keys() []string
 	Size() int
 	Delete(k string)
 }

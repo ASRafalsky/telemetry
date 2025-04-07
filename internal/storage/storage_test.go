@@ -57,12 +57,6 @@ func TestMemStorage(t *testing.T) {
 
 	require.Equal(t, len(keySet), ms.Size())
 
-	keys := ms.Keys()
-	require.Equal(t, len(keySet), len(keys))
-	for i := range 6 {
-		require.Contains(t, keySet, i)
-	}
-
 	ms.Delete(0)
 	require.Equal(t, len(keySet)-1, ms.Size())
 	_, ok := ms.Get(0)

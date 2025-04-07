@@ -14,7 +14,7 @@ import (
 )
 
 func Send(ctx context.Context, addr string, interval time.Duration, client *httpclient.Client,
-	repos map[string]*repository.RepositoryUnit) {
+	repos map[string]repository.Repository) {
 	fmt.Printf("Reporeter started with interval %v\n", interval)
 
 	sendTimer := time.NewTicker(interval)
@@ -38,10 +38,7 @@ func Send(ctx context.Context, addr string, interval time.Duration, client *http
 	}
 }
 
-func sendCounterData(ctx context.Context, addr string, repo *repository.RepositoryUnit, client *httpclient.Client) {
-	repo.Mx.Lock()
-	defer repo.Mx.Unlock()
-
+func sendCounterData(ctx context.Context, addr string, repo repository.Repository, client *httpclient.Client) {
 	header := http.Header{
 		"Content-Type": []string{"text/plain"},
 	}
@@ -63,10 +60,7 @@ func sendCounterData(ctx context.Context, addr string, repo *repository.Reposito
 	}
 }
 
-func sendGaugeData(ctx context.Context, addr string, repo *repository.RepositoryUnit, client *httpclient.Client) {
-	repo.Mx.Lock()
-	defer repo.Mx.Unlock()
-
+func sendGaugeData(ctx context.Context, addr string, repo repository.Repository, client *httpclient.Client) {
 	header := http.Header{
 		"Content-Type": []string{"text/plain"},
 	}
