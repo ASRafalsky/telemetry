@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ASRafalsky/telemetry/cmd/agent/poller"
-	"github.com/ASRafalsky/telemetry/cmd/agent/reporter"
-	"github.com/ASRafalsky/telemetry/cmd/agent/repository"
+	"github.com/ASRafalsky/telemetry/pkg/services/poller"
+	"github.com/ASRafalsky/telemetry/pkg/services/reporter"
+	"github.com/ASRafalsky/telemetry/pkg/services/repository"
 )
 
 func main() {

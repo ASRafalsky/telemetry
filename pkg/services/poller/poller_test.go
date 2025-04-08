@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ASRafalsky/telemetry/cmd/agent/repository"
 	"github.com/ASRafalsky/telemetry/internal/types"
+	"github.com/ASRafalsky/telemetry/pkg/services/repository"
 )
 
 func TestGetMetrics(t *testing.T) {

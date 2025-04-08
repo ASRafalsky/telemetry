@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math"
 	"strconv"
 )
@@ -25,6 +26,11 @@ func GaugeToBytes(g Gauge) []byte {
 
 // BytesToGauge converts LE byte slice to Gauge.
 func BytesToGauge(b []byte) Gauge {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("panic: ", r)
+		}
+	}()
 	bits := binary.LittleEndian.Uint64(b)
 	return Gauge(math.Float64frombits(bits))
 }
@@ -52,6 +58,11 @@ func CounterToBytes(c Counter) []byte {
 
 // BytesToCounter converts LE byte slice to Counter.
 func BytesToCounter(b []byte) Counter {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("panic: ", r)
+		}
+	}()
 	res := binary.LittleEndian.Uint64(b)
 	return Counter(res)
 }

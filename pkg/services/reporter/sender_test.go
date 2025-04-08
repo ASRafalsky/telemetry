@@ -11,8 +11,8 @@ import (
 	"github.com/gojek/heimdall/v7/httpclient"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ASRafalsky/telemetry/cmd/agent/repository"
 	"github.com/ASRafalsky/telemetry/internal/types"
+	"github.com/ASRafalsky/telemetry/pkg/services/repository"
 )
 
 const testValStr = "1234"

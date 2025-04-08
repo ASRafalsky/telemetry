@@ -9,8 +9,8 @@ import (
 	"github.com/gojek/heimdall/v7/httpclient"
 	"go.uber.org/multierr"
 
-	"github.com/ASRafalsky/telemetry/cmd/agent/repository"
 	"github.com/ASRafalsky/telemetry/internal/types"
+	"github.com/ASRafalsky/telemetry/pkg/services/repository"
 )
 
 func Send(ctx context.Context, addr string, interval time.Duration, client *httpclient.Client,

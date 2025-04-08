@@ -2,14 +2,14 @@ package main
 
 import (
 	"fmt"
-	"html/template"
 	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/ASRafalsky/telemetry/cmd/server/handlers"
 	"github.com/ASRafalsky/telemetry/internal/storage"
+	"github.com/ASRafalsky/telemetry/pkg/services/handlers"
+	"github.com/ASRafalsky/telemetry/pkg/services/templates"
 )
 
 func main() {
@@ -36,27 +36,7 @@ func newRouter() http.Handler {
 			r.Get("/{type}/{name}", handlers.FailureGetHandler())
 		})
 		r.Post("/", handlers.FailurePostHandler())
-		r.Get("/", handlers.AllGetHandler(prepareTemplate(), gaugeRepo, counterRepo))
+		r.Get("/", handlers.AllGetHandler(templates.PrepareTemplate(), gaugeRepo, counterRepo))
 	})
 	return r
-}
-
-func prepareTemplate() *template.Template {
-	tmpl := `
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Keys</title>
-</head>
-<body>
-    <h1>Keys:</h1>
-    <ul>
-        {{range .}}
-        <li>{{.}}</li>
-        {{end}}
-    </ul>
-</body>
-</html>
-`
-	return template.Must(template.New("list").Parse(tmpl))
 }

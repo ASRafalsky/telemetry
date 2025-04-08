@@ -10,9 +10,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ASRafalsky/telemetry/cmd/agent/poller"
-	"github.com/ASRafalsky/telemetry/cmd/agent/reporter"
-	"github.com/ASRafalsky/telemetry/cmd/agent/repository"
+	"github.com/ASRafalsky/telemetry/pkg/services/poller"
+	"github.com/ASRafalsky/telemetry/pkg/services/reporter"
+	"github.com/ASRafalsky/telemetry/pkg/services/repository"
 )
 
 func TestAgent(t *testing.T) {

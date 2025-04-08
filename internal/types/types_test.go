@@ -5,6 +5,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -105,6 +106,23 @@ func TestCounter(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, testVal)
 			require.Equal(t, tc.stringVal, testVal.String())
+		})
+	}
+}
+
+func TestBytesToTypeWithBadData(t *testing.T) {
+	badData := [][]byte{
+		nil,
+		{},
+		{1, 2, 3},
+	}
+
+	for _, data := range badData {
+		assert.NotPanics(t, func() {
+			BytesToGauge(data)
+		})
+		assert.NotPanics(t, func() {
+			BytesToCounter(data)
 		})
 	}
 }

@@ -7,8 +7,8 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/ASRafalsky/telemetry/cmd/agent/repository"
 	"github.com/ASRafalsky/telemetry/internal/types"
+	"github.com/ASRafalsky/telemetry/pkg/services/repository"
 )
 
 func Poll(ctx context.Context, interval time.Duration, repos map[string]repository.Repository) {
