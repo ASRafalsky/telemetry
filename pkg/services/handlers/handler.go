@@ -24,6 +24,7 @@ func GaugePostHandler(repo repository) func(http.ResponseWriter, *http.Request) 
 		}
 
 		res.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		res.WriteHeader(http.StatusOK)
 	}
 }
 
@@ -47,6 +48,7 @@ func GaugeGetHandler(repo repository) func(http.ResponseWriter, *http.Request) {
 			http.Error(res, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		res.WriteHeader(http.StatusOK)
 	}
 }
 
@@ -64,6 +66,7 @@ func CounterPostHandler(repo repository) func(http.ResponseWriter, *http.Request
 		}
 
 		res.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		res.WriteHeader(http.StatusOK)
 	}
 }
 
@@ -87,6 +90,7 @@ func CounterGetHandler(repo repository) func(http.ResponseWriter, *http.Request)
 			http.Error(res, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		res.WriteHeader(http.StatusOK)
 	}
 }
 
@@ -120,6 +124,7 @@ func AllGetHandler(tmpl *template.Template, repos ...repository) func(http.Respo
 			http.Error(res, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		res.WriteHeader(http.StatusOK)
 	}
 }
 

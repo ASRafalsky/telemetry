@@ -11,10 +11,16 @@ import (
 	"github.com/gojek/heimdall/v7/httpclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/ASRafalsky/telemetry/internal/log"
+	"github.com/ASRafalsky/telemetry/pkg/services/handlers"
 )
 
 func TestServerStatuses(t *testing.T) {
-	srv := httptest.NewServer(newRouter())
+	var err error
+	Log, err = log.AddLoggerWith("info", "")
+	require.NoError(t, err)
+	srv := httptest.NewServer(handlers.WithLogging(newRouter(), Log))
 	defer srv.Close()
 
 	header := http.Header{
@@ -173,7 +179,10 @@ func TestServerStatuses(t *testing.T) {
 }
 
 func Test_POST_GET(t *testing.T) {
-	srv := httptest.NewServer(newRouter())
+	var err error
+	Log, err = log.AddLoggerWith("info", "")
+	require.NoError(t, err)
+	srv := httptest.NewServer(handlers.WithLogging(newRouter(), Log))
 	defer srv.Close()
 	// Create a new HTTP client with a default timeout
 	timeout := 1000 * time.Millisecond
