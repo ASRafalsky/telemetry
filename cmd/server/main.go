@@ -12,18 +12,17 @@ import (
 	"github.com/ASRafalsky/telemetry/pkg/services/templates"
 )
 
-var Log = log.NewEmpty()
-
 func main() {
 	address, logLevel, path := parseFlags()
 
-	var err error
-	if Log, err = log.AddLoggerWith(logLevel, path); err != nil {
+	Log, err := log.AddLoggerWith(logLevel, path)
+	if err != nil {
 		panic(err)
 	}
 	defer Log.Sync()
 
-	Log.Fatal("Failed to start server:", zap.String("err:", http.ListenAndServe(address, handlers.WithLogging(newRouter(), Log)).Error()))
+	Log.Fatal("Failed to start server:" +
+		zap.String("err:", http.ListenAndServe(address, handlers.WithLogging(newRouter(), Log)).Error()).String)
 }
 
 func newRouter() http.Handler {

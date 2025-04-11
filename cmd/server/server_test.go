@@ -17,8 +17,7 @@ import (
 )
 
 func TestServerStatuses(t *testing.T) {
-	var err error
-	Log, err = log.AddLoggerWith("info", "")
+	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
 	srv := httptest.NewServer(handlers.WithLogging(newRouter(), Log))
 	defer srv.Close()
@@ -179,8 +178,7 @@ func TestServerStatuses(t *testing.T) {
 }
 
 func Test_POST_GET(t *testing.T) {
-	var err error
-	Log, err = log.AddLoggerWith("info", "")
+	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
 	srv := httptest.NewServer(handlers.WithLogging(newRouter(), Log))
 	defer srv.Close()

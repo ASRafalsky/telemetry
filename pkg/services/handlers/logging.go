@@ -2,9 +2,8 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 	"time"
-
-	"github.com/ASRafalsky/telemetry/internal/log"
 )
 
 type (
@@ -30,7 +29,7 @@ func (r *loggingResponseWriter) WriteHeader(statusCode int) {
 	r.responseData.status = statusCode
 }
 
-func WithLogging(h http.Handler, logger *log.Logger) http.Handler {
+func WithLogging(h http.Handler, l logger) http.Handler {
 	logFn := func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
@@ -42,15 +41,22 @@ func WithLogging(h http.Handler, logger *log.Logger) http.Handler {
 
 		duration := time.Since(start)
 
-		logger.Info("[Handler/Request]",
-			log.StringField("url", url),
-			log.StringField("method", method),
-			log.DurationField("duration", duration),
+		l.Info("[Handler/Request]",
+			"url:", url,
+			"method:", method,
+			"duration:", duration.String(),
 		)
-		logger.Info("[Handler/Response]",
-			log.IntField("status", lw.responseData.status),
-			log.IntField("size", lw.responseData.size),
-		)
+		l.Info("[Handler/Response]",
+			"status:", strconv.Itoa(lw.responseData.status),
+			"size:", strconv.Itoa(lw.responseData.size))
 	}
 	return http.HandlerFunc(logFn)
+}
+
+type logger interface {
+	Info(msg ...string)
+	Warn(msg ...string)
+	Error(msg ...string)
+	Debug(msg ...string)
+	Fatal(msg ...string)
 }

@@ -1,24 +1,20 @@
 package log
 
 import (
+	"io"
 	"os"
-	"time"
+	"strings"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 type Logger struct {
 	*zap.Logger
 }
 
-func NewEmpty() *Logger {
-	return &Logger{
-		Logger: zap.NewNop(),
-	}
-}
-
-func AddLoggerWith(level, path string) (*Logger, error) {
+func AddLoggerWith(level, output string) (*Logger, error) {
 	lvl, err := zapcore.ParseLevel(level)
 	if err != nil {
 		return nil, err
@@ -26,31 +22,57 @@ func AddLoggerWith(level, path string) (*Logger, error) {
 	cfg := zap.NewProductionEncoderConfig()
 	cfg.EncodeTime = zapcore.ISO8601TimeEncoder
 
-	if path == "" {
-		return &Logger{
-			zap.New(zapcore.NewCore(zapcore.NewConsoleEncoder(cfg), zapcore.AddSync(os.Stdout), lvl)),
-		}, nil
-	}
+	var out io.Writer
+	switch output {
+	case "stdout", "":
+		out = os.Stdout
+	case "stderr":
+		out = os.Stderr
+	default:
+		out = &lumberjack.Logger{
+			Filename:   output,
+			MaxSize:    100,
+			MaxBackups: 3,
+			MaxAge:     28,
+			Compress:   true,
+		}
 
-	logFile, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-	if err != nil {
-		return nil, err
 	}
 
 	return &Logger{
-		zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(cfg), zapcore.AddSync(logFile), lvl)),
+		zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(cfg), zapcore.AddSync(out), lvl)),
 	}, nil
 
 }
 
-func StringField(key string, value string) zap.Field {
-	return zap.String(key, value)
+func (l *Logger) Fatal(msg ...string) {
+	l.Logger.Fatal(buildMsg(msg...))
 }
 
-func IntField(key string, value int) zap.Field {
-	return zap.Int(key, value)
+func (l *Logger) Error(msg ...string) {
+	l.Logger.Error(buildMsg(msg...))
 }
 
-func DurationField(key string, value time.Duration) zap.Field {
-	return zap.Duration(key, value)
+func (l *Logger) Warn(msg ...string) {
+	l.Logger.Warn(buildMsg(msg...))
+}
+
+func (l *Logger) Debug(msg ...string) {
+	l.Logger.Debug(buildMsg(msg...))
+}
+
+func (l *Logger) Info(msg ...string) {
+	l.Logger.Info(buildMsg(msg...))
+}
+
+func buildMsg(msg ...string) string {
+	if len(msg) == 0 {
+		return ""
+	}
+	b := strings.Builder{}
+	for i := range msg {
+		b.WriteString(msg[i])
+		b.WriteString(" ")
+	}
+	return b.String()
 }
