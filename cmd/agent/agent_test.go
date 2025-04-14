@@ -2,22 +2,26 @@ package main
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/mailru/easyjson"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ASRafalsky/telemetry/internal/log"
+	"github.com/ASRafalsky/telemetry/internal/storage"
+	"github.com/ASRafalsky/telemetry/internal/transport"
 	"github.com/ASRafalsky/telemetry/pkg/services/poller"
 	"github.com/ASRafalsky/telemetry/pkg/services/reporter"
-	"github.com/ASRafalsky/telemetry/pkg/services/repository"
 )
 
 func TestAgent(t *testing.T) {
 	var (
-		gFound, cFound bool
+		gFound, cFound, cJSONFound, gJSONFound bool
 	)
 
 	// Add handlers and router.
@@ -37,10 +41,34 @@ func TestAgent(t *testing.T) {
 			}
 		}
 	}
+	jsonHandler := func() http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, r.Header.Get("Content-Type"), "application/json")
+
+			buf, err := io.ReadAll(r.Body)
+			defer require.NoError(t, r.Body.Close())
+			require.NoError(t, err)
+			m := transport.Metrics{}
+			require.NoError(t, easyjson.Unmarshal(buf, &m))
+
+			switch m.MType {
+			case counter:
+				require.NotNil(t, m.Delta)
+				require.Nil(t, m.Value)
+				cJSONFound = true
+			case gauge:
+				require.NotNil(t, m.Value)
+				require.Nil(t, m.Delta)
+				gJSONFound = true
+			default:
+			}
+		}
+	}
 
 	r := chi.NewRouter()
 	r.Route("/", func(r chi.Router) {
 		r.Route("/update", func(r chi.Router) {
+			r.Post("/", jsonHandler())
 			r.Post("/gauge/{name}/{value}", gaugeHandler())
 			r.Post("/counter/{name}/{value}", counterHandler())
 			r.Post("/{type}/{name}/{value}", func(w http.ResponseWriter, r *http.Request) {
@@ -56,16 +84,28 @@ func TestAgent(t *testing.T) {
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
-	t.Log(srv.URL)
-
 	client := NewClient()
 	ctx, cancel := context.WithCancel(context.Background())
 
-	repos := repository.NewRepositories()
+	gaugeRepo := storage.New[string, []byte]()
+	counterRepo := storage.New[string, []byte]()
 
-	go poller.Poll(ctx, 20*time.Millisecond, repos)
-	go reporter.Send(ctx, srv.URL, 100*time.Millisecond, client, repos)
+	log, err := log.AddLoggerWith("info", "")
+	require.NoError(t, err)
 
-	require.Eventually(t, func() bool { return gFound && cFound }, 200*time.Millisecond, 50*time.Millisecond)
+	go poller.Poll(ctx, 20*time.Millisecond, map[string]poller.Repository{
+		gauge:   gaugeRepo,
+		counter: counterRepo,
+	}, log)
+	go reporter.Send(ctx, srv.URL, 100*time.Millisecond, client, map[string]reporter.Repository{
+		gauge:   gaugeRepo,
+		counter: counterRepo,
+	}, log)
+
+	require.Eventually(t,
+		func() bool {
+			return !gFound && !cFound && gJSONFound && cJSONFound
+		},
+		200*time.Millisecond, 50*time.Millisecond)
 	cancel()
 }

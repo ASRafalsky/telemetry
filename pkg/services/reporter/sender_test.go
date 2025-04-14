@@ -2,6 +2,7 @@ package reporter
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,17 +10,23 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/gojek/heimdall/v7/httpclient"
+	"github.com/mailru/easyjson"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ASRafalsky/telemetry/internal/storage"
+	"github.com/ASRafalsky/telemetry/internal/transport"
 	"github.com/ASRafalsky/telemetry/internal/types"
-	"github.com/ASRafalsky/telemetry/pkg/services/repository"
 )
 
-const testValStr = "1234"
+const (
+	testValStr   = "1234"
+	testValInt64 = int64(1234)
+	testValFloat = float64(1234)
+)
 
 func TestSend(t *testing.T) {
 	var (
-		gFound, cFound bool
+		gFound, cFound, gJSONFound, cJSONFound bool
 	)
 
 	// Add handlers and router.
@@ -41,9 +48,37 @@ func TestSend(t *testing.T) {
 			cFound = true
 		}
 	}
+	jsonHandler := func() http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, r.Header.Get("Content-Type"), "application/json")
+
+			buf, err := io.ReadAll(r.Body)
+			defer require.NoError(t, r.Body.Close())
+			require.NoError(t, err)
+			m := transport.Metrics{}
+			require.NoError(t, easyjson.Unmarshal(buf, &m))
+
+			switch m.MType {
+			case counter:
+				require.Equal(t, "counter_var", m.ID)
+				require.NotNil(t, m.Delta)
+				require.Equal(t, testValInt64, *m.Delta)
+				require.Nil(t, m.Value)
+				cJSONFound = true
+			case gauge:
+				require.Equal(t, "gauge_var", m.ID)
+				require.NotNil(t, m.Value)
+				require.Equal(t, testValFloat, *m.Value)
+				require.Nil(t, m.Delta)
+				gJSONFound = true
+			default:
+			}
+		}
+	}
 
 	r := chi.NewRouter()
 	r.Route("/update", func(r chi.Router) {
+		r.Post("/", jsonHandler())
 		r.Post("/gauge/{name}/{value}", gaugeHandler())
 		r.Post("/counter/{name}/{value}", counterHandler())
 		r.Post("/{type}/{name}/{value}", func(w http.ResponseWriter, r *http.Request) {
@@ -60,7 +95,8 @@ func TestSend(t *testing.T) {
 	client := httpclient.NewClient(httpclient.WithHTTPTimeout(timeout))
 
 	// Init repositories.
-	repos := repository.NewRepositories()
+	gaugeRepo := storage.New[string, []byte]()
+	counterRepo := storage.New[string, []byte]()
 
 	// Prepare data and set to repos.
 	gaugeData, err := types.ParseGauge(testValStr)
@@ -68,11 +104,19 @@ func TestSend(t *testing.T) {
 	counterData, err := types.ParseCounter(testValStr)
 	require.NoError(t, err)
 
-	repos[repository.Gauge].Set("gauge_var", types.GaugeToBytes(gaugeData))
-	repos[repository.Counter].Set("counter_var", types.CounterToBytes(counterData))
+	gaugeRepo.Set("gauge_var", types.GaugeToBytes(gaugeData))
+	counterRepo.Set("counter_var", types.CounterToBytes(counterData))
 
-	sendGaugeData(context.Background(), srv.URL, repos[repository.Gauge], client)
-	sendCounterData(context.Background(), srv.URL, repos[repository.Counter], client)
+	sendGaugeData(context.Background(), srv.URL, gaugeRepo, client)
+	sendCounterData(context.Background(), srv.URL, counterRepo, client)
+	require.NoError(t,
+		sendJSONData(context.Background(), srv.URL, counter, counterRepo, client))
+	require.NoError(t,
+		sendJSONData(context.Background(), srv.URL, gauge, gaugeRepo, client))
 
-	require.Eventually(t, func() bool { return gFound && cFound }, 200*time.Millisecond, 50*time.Millisecond)
+	require.Eventually(t,
+		func() bool {
+			return gFound && cFound && gJSONFound && cJSONFound
+		},
+		200*time.Millisecond, 50*time.Millisecond)
 }

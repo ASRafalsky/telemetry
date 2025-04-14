@@ -8,17 +8,19 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ASRafalsky/telemetry/internal/log"
+	"github.com/ASRafalsky/telemetry/internal/storage"
 	"github.com/ASRafalsky/telemetry/internal/types"
-	"github.com/ASRafalsky/telemetry/pkg/services/repository"
 )
 
 func TestGetMetrics(t *testing.T) {
-	repos := repository.NewRepositories()
+	gaugeRepo := storage.New[string, []byte]()
+	counterRepo := storage.New[string, []byte]()
 
 	t.Run("getCounterMetrics", func(t *testing.T) {
 		for i := range 10 {
-			getCounterMetrics(repos[repository.Counter])
-			value, ok := repos[repository.Counter].Get("PollCount")
+			getCounterMetrics(counterRepo)
+			value, ok := counterRepo.Get("PollCount")
 			assert.True(t, ok)
 			assert.Equal(t, types.Counter(i), types.BytesToCounter(value), i)
 		}
@@ -27,8 +29,8 @@ func TestGetMetrics(t *testing.T) {
 	t.Run("getGaugeMetrics", func(t *testing.T) {
 		var previousValue types.Gauge
 		for range 10 {
-			getGaugeMetrics(repos[repository.Gauge])
-			value, ok := repos[repository.Gauge].Get("RandomValue")
+			getGaugeMetrics(gaugeRepo)
+			value, ok := gaugeRepo.Get("RandomValue")
 			assert.True(t, ok)
 			gaugeValue := types.BytesToGauge(value)
 			assert.NotZero(t, gaugeValue)
@@ -39,10 +41,18 @@ func TestGetMetrics(t *testing.T) {
 }
 
 func TestPoll(t *testing.T) {
-	repos := repository.NewRepositories()
+	gaugeRepo := storage.New[string, []byte]()
+	counterRepo := storage.New[string, []byte]()
+	repos := map[string]Repository{
+		gauge:   gaugeRepo,
+		counter: counterRepo,
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 
-	go Poll(ctx, 100*time.Millisecond, repos)
+	log, err := log.AddLoggerWith("info", "")
+	require.NoError(t, err)
+	defer log.Sync()
+	go Poll(ctx, 100*time.Millisecond, repos, log)
 
 	// Wait 90 ms, it is too early to have any data.
 	time.Sleep(90 * time.Millisecond)

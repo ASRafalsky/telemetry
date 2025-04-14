@@ -29,20 +29,22 @@ func AddLoggerWith(level, output string) (*Logger, error) {
 	case "stderr":
 		out = os.Stderr
 	default:
-		out = &lumberjack.Logger{
-			Filename:   output,
-			MaxSize:    100,
-			MaxBackups: 3,
-			MaxAge:     28,
-			Compress:   true,
-		}
-
+		out = logRotator(output, 100, 3, true)
 	}
 
 	return &Logger{
 		zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(cfg), zapcore.AddSync(out), lvl)),
 	}, nil
+}
 
+func logRotator(path string, maxSize int, maxBackups int, compress bool) *lumberjack.Logger {
+	return &lumberjack.Logger{
+		Filename:   path,
+		MaxSize:    maxSize,
+		MaxBackups: maxBackups,
+		MaxAge:     28,
+		Compress:   compress,
+	}
 }
 
 func (l *Logger) Fatal(msg ...string) {
@@ -72,7 +74,9 @@ func buildMsg(msg ...string) string {
 	b := strings.Builder{}
 	for i := range msg {
 		b.WriteString(msg[i])
-		b.WriteString(" ")
+		if i != len(msg)-1 {
+			b.WriteString(" ")
+		}
 	}
 	return b.String()
 }
