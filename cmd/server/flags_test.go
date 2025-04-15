@@ -7,6 +7,8 @@ import (
 )
 
 func TestParseFlags_Default(t *testing.T) {
-	addr := parseFlags()
+	addr, loglevel, path := parseFlags()
 	require.Equal(t, addr, ":8080")
+	require.Equal(t, loglevel, "info")
+	require.Empty(t, path)
 }

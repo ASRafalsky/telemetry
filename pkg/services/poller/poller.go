@@ -2,17 +2,20 @@ package poller
 
 import (
 	"context"
-	"fmt"
 	"math/rand/v2"
 	"runtime"
 	"time"
 
 	"github.com/ASRafalsky/telemetry/internal/types"
-	"github.com/ASRafalsky/telemetry/pkg/services/repository"
 )
 
-func Poll(ctx context.Context, interval time.Duration, repos map[string]repository.Repository) {
-	fmt.Printf("Polling started with interval %v\n", interval)
+const (
+	gauge   = "gauge"
+	counter = "counter"
+)
+
+func Poll(ctx context.Context, interval time.Duration, repos map[string]Repository, log logger) {
+	log.Info("Polling started with interval:", interval.String())
 	pollTimer := time.NewTicker(interval)
 	defer pollTimer.Stop()
 
@@ -23,18 +26,19 @@ func Poll(ctx context.Context, interval time.Duration, repos map[string]reposito
 		case <-pollTimer.C:
 			for name := range repos {
 				switch name {
-				case repository.Gauge:
+				case gauge:
 					getGaugeMetrics(repos[name])
-				case repository.Counter:
+				case counter:
 					getCounterMetrics(repos[name])
 				default:
+					log.Fatal("[Poll] unknown metrics type:", name)
 				}
 			}
 		}
 	}
 }
 
-func getCounterMetrics(repo repository.Repository) {
+func getCounterMetrics(repo Repository) {
 	cnt, ok := repo.Get("PollCount")
 	if !ok {
 		repo.Set("PollCount", types.CounterToBytes(types.Counter(0)))
@@ -45,7 +49,7 @@ func getCounterMetrics(repo repository.Repository) {
 	repo.Set("PollCount", types.CounterToBytes(cntToSet))
 }
 
-func getGaugeMetrics(repo repository.Repository) {
+func getGaugeMetrics(repo Repository) {
 	memStats := runtime.MemStats{}
 	runtime.ReadMemStats(&memStats)
 
@@ -77,4 +81,20 @@ func getGaugeMetrics(repo repository.Repository) {
 	repo.Set("Sys", types.GaugeToBytes(types.Gauge(memStats.Sys)))
 	repo.Set("TotalAlloc", types.GaugeToBytes(types.Gauge(memStats.TotalAlloc)))
 	repo.Set("RandomValue", types.GaugeToBytes(types.Gauge(rand.Float64())))
+}
+
+type logger interface {
+	Info(msg ...string)
+	Warn(msg ...string)
+	Error(msg ...string)
+	Debug(msg ...string)
+	Fatal(msg ...string)
+}
+
+type Repository interface {
+	Set(k string, v []byte)
+	Get(k string) ([]byte, bool)
+	ForEach(ctx context.Context, fn func(k string, v []byte) error) error
+	Size() int
+	Delete(k string)
 }
