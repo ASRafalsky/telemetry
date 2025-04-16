@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -26,7 +27,8 @@ func TestServerStatuses(t *testing.T) {
 	defer srv.Close()
 
 	header := http.Header{
-		"Content-Type": []string{"text/plain"},
+		"Content-Type":    []string{"text/plain"},
+		"Accept-Encoding": []string{""},
 	}
 	expHeader := http.Header{
 		"Content-Type": []string{"text/plain; charset=utf-8"},
@@ -199,7 +201,10 @@ func Test_JSON(t *testing.T) {
 	gaugeVal := 123.5
 	counterVal := int64(123)
 	updatedCounterVal := counterVal + counterVal
-	header := http.Header{"Content-Type": []string{"application/json"}}
+	header := http.Header{
+		"Content-Type":    []string{"application/json"},
+		"Accept-Encoding": []string{""},
+	}
 
 	ttJSONUpdate := []struct {
 		name          string
@@ -466,6 +471,303 @@ func Test_JSON(t *testing.T) {
 	}
 }
 
+func Test_JSON_encoding(t *testing.T) {
+	Log, err := log.AddLoggerWith("info", "")
+	require.NoError(t, err)
+	srv := httptest.NewServer(handlers.WithLogging(newRouter(), Log))
+	defer srv.Close()
+
+	// Create a new HTTP client with a default timeout
+	timeout := 1000 * time.Millisecond
+	client := httpclient.NewClient(httpclient.WithHTTPTimeout(timeout))
+
+	gaugeVal := 123.5
+	counterVal := int64(123)
+	updatedCounterVal := counterVal + counterVal
+	header := http.Header{
+		"Content-Type":     []string{"application/json"},
+		"Accept-Encoding":  []string{"gzip"},
+		"Content-Encoding": []string{""},
+	}
+
+	ttJSONUpdate := []struct {
+		name          string
+		url           string
+		data          transport.Metrics
+		header        http.Header
+		expStatusCode int
+		expResponse   transport.Metrics
+		expHeaders    http.Header
+	}{
+		{
+			name: "correct_gauge_update_1",
+			url:  srv.URL + "/update/",
+			data: transport.Metrics{
+				MType: "gauge",
+				ID:    "g_value0",
+				Value: &gaugeVal,
+			},
+			expStatusCode: http.StatusOK,
+			expResponse: transport.Metrics{
+				MType: "gauge",
+				ID:    "g_value0",
+				Value: &gaugeVal,
+			},
+		},
+		{
+			name: "correct_gauge_update_2",
+			url:  srv.URL + "/update/",
+			data: transport.Metrics{
+				MType: "gauge",
+				ID:    "g_value1",
+				Value: &gaugeVal,
+			},
+			expStatusCode: http.StatusOK,
+			expResponse: transport.Metrics{
+				MType: "gauge",
+				ID:    "g_value1",
+				Value: &gaugeVal,
+			},
+		},
+		{
+			name: "correct_counter_update_1",
+			url:  srv.URL + "/update/",
+			data: transport.Metrics{
+				MType: "counter",
+				ID:    "c_value0",
+				Delta: &counterVal,
+			},
+			expStatusCode: http.StatusOK,
+			expResponse: transport.Metrics{
+				MType: "counter",
+				ID:    "c_value0",
+				Delta: &counterVal,
+			},
+		},
+		{
+			name: "correct_counter_update_2",
+			url:  srv.URL + "/update/",
+			data: transport.Metrics{
+				MType: "counter",
+				ID:    "c_value0",
+				Delta: &counterVal,
+			},
+			expStatusCode: http.StatusOK,
+			expResponse: transport.Metrics{
+				MType: "counter",
+				ID:    "c_value0",
+				Delta: &updatedCounterVal,
+			},
+		},
+		{
+			name: "incorrect_counter_update_1",
+			url:  srv.URL + "/update/",
+			data: transport.Metrics{
+				MType: "counter",
+				ID:    "c_value0",
+				Value: &gaugeVal,
+			},
+			expStatusCode: http.StatusBadRequest,
+		},
+		{
+			name: "incorrect_counter_update_2",
+			url:  srv.URL + "/update/",
+			data: transport.Metrics{
+				MType: "counter",
+				ID:    "c_value0",
+			},
+			expStatusCode: http.StatusBadRequest,
+		},
+		{
+			name: "incorrect_gauge_update_1",
+			url:  srv.URL + "/update/",
+			data: transport.Metrics{
+				MType: "gauge",
+				ID:    "g_value0",
+				Delta: &counterVal,
+			},
+			expStatusCode: http.StatusBadRequest,
+		},
+		{
+			name: "incorrect_gauge_update_2",
+			url:  srv.URL + "/update/",
+			data: transport.Metrics{
+				MType: "gauge",
+				ID:    "g_value0",
+			},
+			expStatusCode: http.StatusBadRequest,
+		},
+		{
+			name: "incorrect_type",
+			url:  srv.URL + "/update/",
+			data: transport.Metrics{
+				MType: "lol",
+				ID:    "g_value0",
+				Value: &gaugeVal,
+			},
+			expStatusCode: http.StatusBadRequest,
+		},
+	}
+
+	for _, tc := range ttJSONUpdate {
+		t.Run(tc.name+"_response_encoding", func(t *testing.T) {
+			buf, err := easyjson.Marshal(tc.data)
+			require.NoError(t, err)
+			resp, err := client.Post(tc.url, bytes.NewReader(buf), header)
+			require.NoError(t, err)
+			require.Equal(t, tc.expStatusCode, resp.StatusCode)
+			if tc.expStatusCode == http.StatusOK {
+				require.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+				zr, err := gzip.NewReader(resp.Body)
+				require.NoError(t, err)
+				buf, err := io.ReadAll(zr)
+				require.NoError(t, err)
+				m := transport.Metrics{}
+				require.NoError(t, easyjson.Unmarshal(buf, &m))
+				require.Equal(t, tc.expResponse, m)
+			}
+			require.NoError(t, resp.Body.Close())
+		})
+	}
+
+	ttJSONValue := []struct {
+		name          string
+		url           string
+		data          transport.Metrics
+		expStatusCode int
+		expResponse   transport.Metrics
+	}{
+		{
+			name: "correct_gauge_value_1",
+			url:  srv.URL + "/value/",
+			data: transport.Metrics{
+				MType: "gauge",
+				ID:    "g_value0",
+			},
+			expStatusCode: http.StatusOK,
+			expResponse: transport.Metrics{
+				MType: "gauge",
+				ID:    "g_value0",
+				Value: &gaugeVal,
+			},
+		},
+		{
+			name: "correct_gauge_value_2",
+			url:  srv.URL + "/value/",
+			data: transport.Metrics{
+				MType: "gauge",
+				ID:    "g_value1",
+			},
+			expStatusCode: http.StatusOK,
+			expResponse: transport.Metrics{
+				MType: "gauge",
+				ID:    "g_value1",
+				Value: &gaugeVal,
+			},
+		},
+		{
+			name: "correct_counter_value_1",
+			url:  srv.URL + "/value/",
+			data: transport.Metrics{
+				MType: "counter",
+				ID:    "c_value0",
+			},
+			expStatusCode: http.StatusOK,
+			expResponse: transport.Metrics{
+				MType: "counter",
+				ID:    "c_value0",
+				Delta: &updatedCounterVal,
+			},
+		},
+		{
+			name: "correct_counter_value_2",
+			url:  srv.URL + "/value/",
+			data: transport.Metrics{
+				MType: "counter",
+				ID:    "c_value0",
+			},
+			expStatusCode: http.StatusOK,
+			expResponse: transport.Metrics{
+				MType: "counter",
+				ID:    "c_value0",
+				Delta: &updatedCounterVal,
+			},
+		},
+		{
+			name: "incorrect_counter_id_1",
+			url:  srv.URL + "/value/",
+			data: transport.Metrics{
+				MType: "counter",
+				ID:    "c_value100500",
+			},
+			expStatusCode: http.StatusNotFound,
+		},
+		{
+			name: "incorrect_counter_type_2",
+			url:  srv.URL + "/value/",
+			data: transport.Metrics{
+				MType: "lol",
+				ID:    "c_value0",
+			},
+			expStatusCode: http.StatusBadRequest,
+		},
+		{
+			name: "incorrect_gauge_type_1",
+			url:  srv.URL + "/value/",
+			data: transport.Metrics{
+				MType: "1111",
+				ID:    "g_value0",
+			},
+			expStatusCode: http.StatusBadRequest,
+		},
+		{
+			name: "incorrect_gauge_id_2",
+			url:  srv.URL + "/update/",
+			data: transport.Metrics{
+				MType: "gauge",
+				ID:    "g_value100500",
+			},
+			expStatusCode: http.StatusBadRequest,
+		},
+		{
+			name: "incorrect_type",
+			url:  srv.URL + "/update/",
+			data: transport.Metrics{
+				MType: "lol",
+				ID:    "g_value0",
+			},
+			expStatusCode: http.StatusBadRequest,
+		},
+	}
+	for _, tc := range ttJSONValue {
+		t.Run(tc.name+"_2way_encoding", func(t *testing.T) {
+			buf, err := easyjson.Marshal(tc.data)
+			require.NoError(t, err)
+			bufToSend := bytes.NewBuffer(nil)
+			zr := gzip.NewWriter(bufToSend)
+			_, err = zr.Write(buf)
+			require.NoError(t, err)
+			require.NoError(t, zr.Close())
+			header.Set("Content-Encoding", "gzip")
+			resp, err := client.Post(tc.url, bufToSend, header)
+			require.NoError(t, err)
+			require.Equal(t, tc.expStatusCode, resp.StatusCode)
+			if tc.expStatusCode == http.StatusOK {
+				require.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+				require.Equal(t, "gzip", resp.Header.Get("Content-Encoding"))
+				zr, err := gzip.NewReader(resp.Body)
+				require.NoError(t, err)
+				buf, err := io.ReadAll(zr)
+				require.NoError(t, err)
+				m := transport.Metrics{}
+				require.NoError(t, easyjson.Unmarshal(buf, &m))
+				require.Equal(t, tc.expResponse, m)
+			}
+			require.NoError(t, resp.Body.Close())
+		})
+	}
+}
+
 func Test_POST_GET(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
@@ -476,7 +778,8 @@ func Test_POST_GET(t *testing.T) {
 	client := httpclient.NewClient(httpclient.WithHTTPTimeout(timeout))
 
 	header := http.Header{
-		"Content-Type": []string{"text/plain"},
+		"Content-Type":    []string{"text/plain"},
+		"Accept-Encoding": []string{""},
 	}
 
 	expCounter := 0
@@ -527,6 +830,23 @@ func Test_POST_GET(t *testing.T) {
 		require.NotZero(t, resp.Header.Get("Content-Length"))
 		require.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
 		buf, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		for _, key := range []string{"html", "Keys", "gaugevalname", "cntvalname"} {
+			assert.Contains(t, string(buf), key)
+		}
+		require.NoError(t, resp.Body.Close())
+	})
+
+	t.Run("Get_key_list_gzip_response", func(t *testing.T) {
+		header.Set("Accept-Encoding", "gzip")
+		resp, err := client.Get(srv.URL+"/", header)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		require.NoError(t, err)
+		require.NotZero(t, resp.Header.Get("Content-Length"))
+		require.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
+		zr, err := gzip.NewReader(resp.Body)
+		require.NoError(t, err)
+		buf, err := io.ReadAll(zr)
 		require.NoError(t, err)
 		for _, key := range []string{"html", "Keys", "gaugevalname", "cntvalname"} {
 			assert.Contains(t, string(buf), key)

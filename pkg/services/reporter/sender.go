@@ -2,6 +2,7 @@ package reporter
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
 	"net/http"
@@ -62,7 +63,18 @@ func sendJSONData(ctx context.Context, addr, mtype string, repo Repository, clie
 			errRes = multierr.Append(errRes, fmt.Errorf("failed to marshal data for %s(%s); %w", mtype, k, err))
 			return nil
 		}
-		resp, err := client.Post(urlData, bytes.NewReader(value), header)
+
+		var resp *http.Response
+		buf, err := gzipData(value)
+		if err == nil {
+			header.Set("Content-Encoding", "gzip")
+			resp, err = client.Post(urlData, buf, header)
+		} else {
+			errRes = multierr.Append(errRes, fmt.Errorf("failed to compress data for %s(%s); %w", mtype, k, err))
+			resp, err = client.Post(urlData, bytes.NewReader(value), header)
+		}
+		defer resp.Body.Close()
+
 		if err != nil {
 			errRes = multierr.Append(errRes, fmt.Errorf("failed to send data for %s(%s); %w", mtype, k, err))
 			return nil
@@ -70,7 +82,7 @@ func sendJSONData(ctx context.Context, addr, mtype string, repo Repository, clie
 		if resp.StatusCode != http.StatusOK {
 			errRes = multierr.Append(errRes, fmt.Errorf("bad status for %s(%s): %s", mtype, k, resp.Status))
 		}
-		return resp.Body.Close()
+		return nil
 	})
 	if err != nil {
 		errRes = multierr.Append(errRes, err)
@@ -149,6 +161,18 @@ func dataToMsg(mtype, name string, d []byte) ([]byte, error) {
 		return nil, fmt.Errorf("unknown metrics type: %s", mtype)
 	}
 	return easyjson.Marshal(metrics)
+}
+
+func gzipData(value []byte) (*bytes.Buffer, error) {
+	bufToSend := bytes.NewBuffer(nil)
+	zr := gzip.NewWriter(bufToSend)
+	if _, err := zr.Write(value); err != nil {
+		return nil, err
+	}
+	if err := zr.Close(); err != nil {
+		return nil, err
+	}
+	return bufToSend, nil
 }
 
 type logger interface {
