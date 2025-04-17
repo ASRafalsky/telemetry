@@ -1,19 +1,22 @@
 package main
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 
 	"github.com/ASRafalsky/telemetry/internal/log"
 	"github.com/ASRafalsky/telemetry/internal/storage"
+	"github.com/ASRafalsky/telemetry/pkg/services/backup"
 	"github.com/ASRafalsky/telemetry/pkg/services/handlers"
 	"github.com/ASRafalsky/telemetry/pkg/services/templates"
 )
 
 func main() {
-	address, logLevel, path := parseFlags()
+	address, logLevel, path, dump, storePeriod, restore := parseFlags()
 
 	Log, err := log.AddLoggerWith(logLevel, path)
 	if err != nil {
@@ -21,16 +24,33 @@ func main() {
 	}
 	defer Log.Sync()
 
-	Log.Fatal("Failed to start server:" +
-		zap.String("err:", http.ListenAndServe(address, handlers.WithLogging(newRouter(), Log)).Error()).String)
-}
+	gaugeRepo := storage.New[string, []byte]()
+	counterRepo := storage.New[string, []byte]()
 
-func newRouter() http.Handler {
-	repos := map[string]handlers.Repository{
-		handlers.Gauge:   storage.New[string, []byte](),
-		handlers.Counter: storage.New[string, []byte](),
+	if restore {
+		if err = restoreRepo(dump, map[string]backup.Repository{
+			handlers.Gauge:   gaugeRepo,
+			handlers.Counter: counterRepo,
+		}); err != nil {
+			Log.Error("Failed to restore from the dump file:", dump, err.Error())
+		}
 	}
 
+	ctx := context.Background()
+
+	go backupRepo(ctx, map[string]backup.Repository{
+		handlers.Gauge:   gaugeRepo,
+		handlers.Counter: counterRepo,
+	}, time.Duration(storePeriod)*time.Second, dump, *Log)
+
+	Log.Fatal("Failed to start server:" +
+		zap.String("err:", http.ListenAndServe(address, handlers.WithLogging(newRouter(map[string]handlers.Repository{
+			handlers.Gauge:   gaugeRepo,
+			handlers.Counter: counterRepo,
+		}), Log)).Error()).String)
+}
+
+func newRouter(repos map[string]handlers.Repository) http.Handler {
 	r := chi.NewRouter()
 	r.Route("/", func(r chi.Router) {
 		r.Route("/update", func(r chi.Router) {

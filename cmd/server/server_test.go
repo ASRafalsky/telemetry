@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ASRafalsky/telemetry/internal/log"
+	"github.com/ASRafalsky/telemetry/internal/storage"
 	"github.com/ASRafalsky/telemetry/internal/transport"
 	"github.com/ASRafalsky/telemetry/pkg/services/handlers"
 )
@@ -23,7 +24,12 @@ import (
 func TestServerStatuses(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
-	srv := httptest.NewServer(handlers.WithLogging(newRouter(), Log))
+	gaugeRepo := storage.New[string, []byte]()
+	counterRepo := storage.New[string, []byte]()
+	srv := httptest.NewServer(handlers.WithLogging(newRouter(map[string]handlers.Repository{
+		handlers.Gauge:   gaugeRepo,
+		handlers.Counter: counterRepo,
+	}), Log))
 	defer srv.Close()
 
 	header := http.Header{
@@ -191,7 +197,12 @@ func TestServerStatuses(t *testing.T) {
 func Test_JSON(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
-	srv := httptest.NewServer(handlers.WithLogging(newRouter(), Log))
+	gaugeRepo := storage.New[string, []byte]()
+	counterRepo := storage.New[string, []byte]()
+	srv := httptest.NewServer(handlers.WithLogging(newRouter(map[string]handlers.Repository{
+		handlers.Gauge:   gaugeRepo,
+		handlers.Counter: counterRepo,
+	}), Log))
 	defer srv.Close()
 
 	// Create a new HTTP client with a default timeout
@@ -474,7 +485,12 @@ func Test_JSON(t *testing.T) {
 func Test_JSON_encoding(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
-	srv := httptest.NewServer(handlers.WithLogging(newRouter(), Log))
+	gaugeRepo := storage.New[string, []byte]()
+	counterRepo := storage.New[string, []byte]()
+	srv := httptest.NewServer(handlers.WithLogging(newRouter(map[string]handlers.Repository{
+		handlers.Gauge:   gaugeRepo,
+		handlers.Counter: counterRepo,
+	}), Log))
 	defer srv.Close()
 
 	// Create a new HTTP client with a default timeout
@@ -771,7 +787,12 @@ func Test_JSON_encoding(t *testing.T) {
 func Test_POST_GET(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
-	srv := httptest.NewServer(handlers.WithLogging(newRouter(), Log))
+	gaugeRepo := storage.New[string, []byte]()
+	counterRepo := storage.New[string, []byte]()
+	srv := httptest.NewServer(handlers.WithLogging(newRouter(map[string]handlers.Repository{
+		handlers.Gauge:   gaugeRepo,
+		handlers.Counter: counterRepo,
+	}), Log))
 	defer srv.Close()
 	// Create a new HTTP client with a default timeout
 	timeout := 1000 * time.Millisecond

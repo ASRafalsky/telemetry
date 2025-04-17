@@ -73,12 +73,13 @@ func sendJSONData(ctx context.Context, addr, mtype string, repo Repository, clie
 			errRes = multierr.Append(errRes, fmt.Errorf("failed to compress data for %s(%s); %w", mtype, k, err))
 			resp, err = client.Post(urlData, bytes.NewReader(value), header)
 		}
-		defer resp.Body.Close()
-
-		if err != nil {
+		if err == nil {
+			defer resp.Body.Close()
+		} else {
 			errRes = multierr.Append(errRes, fmt.Errorf("failed to send data for %s(%s); %w", mtype, k, err))
 			return nil
 		}
+
 		if resp.StatusCode != http.StatusOK {
 			errRes = multierr.Append(errRes, fmt.Errorf("bad status for %s(%s): %s", mtype, k, resp.Status))
 		}
