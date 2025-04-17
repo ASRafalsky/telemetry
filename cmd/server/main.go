@@ -34,19 +34,19 @@ func newRouter() http.Handler {
 	r := chi.NewRouter()
 	r.Route("/", func(r chi.Router) {
 		r.Route("/update", func(r chi.Router) {
-			r.Post("/", handlers.JSONPostHandler(repos, handlers.SetDataTo))
+			r.Post("/", handlers.WithCompress(handlers.JSONPostHandler(repos, handlers.SetDataTo)))
 			r.Post("/gauge/{name}/{value}", handlers.GaugePostHandler(repos[handlers.Gauge]))
 			r.Post("/counter/{name}/{value}", handlers.CounterPostHandler(repos[handlers.Counter]))
 			r.Post("/{type}/{name}/{value}", handlers.FailurePostHandler())
 		})
 		r.Route("/value", func(r chi.Router) {
-			r.Post("/", handlers.JSONPostHandler(repos, handlers.GetDataFrom))
+			r.Post("/", handlers.WithCompress(handlers.JSONPostHandler(repos, handlers.GetDataFrom)))
 			r.Get("/gauge/{name}", handlers.GaugeGetHandler(repos[handlers.Gauge]))
 			r.Get("/counter/{name}", handlers.CounterGetHandler(repos[handlers.Counter]))
 			r.Get("/{type}/{name}", handlers.FailureGetHandler())
 		})
 		r.Post("/", handlers.FailurePostHandler())
-		r.Get("/", handlers.AllGetHandler(templates.PrepareTemplate(), repos))
+		r.Get("/", handlers.WithCompress(handlers.AllGetHandler(templates.PrepareTemplate(), repos)))
 	})
 	return r
 }

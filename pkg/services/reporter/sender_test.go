@@ -1,6 +1,7 @@
 package reporter
 
 import (
+	"compress/gzip"
 	"context"
 	"io"
 	"net/http"
@@ -51,10 +52,21 @@ func TestSend(t *testing.T) {
 	jsonHandler := func() http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			require.Equal(t, r.Header.Get("Content-Type"), "application/json")
-
-			buf, err := io.ReadAll(r.Body)
+			var (
+				buf []byte
+				err error
+			)
+			switch r.Header.Get("Content-Encoding") {
+			case "gzip":
+				zr, err := gzip.NewReader(r.Body)
+				require.NoError(t, err)
+				buf, err = io.ReadAll(zr)
+				require.NoError(t, err)
+			default:
+				buf, err = io.ReadAll(r.Body)
+				require.NoError(t, err)
+			}
 			defer require.NoError(t, r.Body.Close())
-			require.NoError(t, err)
 			m := transport.Metrics{}
 			require.NoError(t, easyjson.Unmarshal(buf, &m))
 
