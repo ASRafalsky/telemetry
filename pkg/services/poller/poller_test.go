@@ -19,7 +19,7 @@ func TestGetMetrics(t *testing.T) {
 
 	t.Run("getCounterMetrics", func(t *testing.T) {
 		for i := range 10 {
-			getCounterMetrics(counterRepo)
+			GetCounterMetrics(counterRepo)
 			value, ok := counterRepo.Get("PollCount")
 			assert.True(t, ok)
 			assert.Equal(t, types.Counter(i), types.BytesToCounter(value), i)
@@ -29,7 +29,7 @@ func TestGetMetrics(t *testing.T) {
 	t.Run("getGaugeMetrics", func(t *testing.T) {
 		var previousValue types.Gauge
 		for range 10 {
-			getGaugeMetrics(gaugeRepo)
+			GetGaugeMetrics(gaugeRepo)
 			value, ok := gaugeRepo.Get("RandomValue")
 			assert.True(t, ok)
 			gaugeValue := types.BytesToGauge(value)
@@ -43,33 +43,21 @@ func TestGetMetrics(t *testing.T) {
 func TestPoll(t *testing.T) {
 	gaugeRepo := storage.New[string, []byte]()
 	counterRepo := storage.New[string, []byte]()
-	repos := map[string]Repository{
-		gauge:   gaugeRepo,
-		counter: counterRepo,
-	}
 	ctx, cancel := context.WithCancel(context.Background())
 
 	log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
 	defer log.Sync()
-	go Poll(ctx, 100*time.Millisecond, repos, log)
+	go Poll(ctx, GetGaugeMetrics, 100*time.Millisecond, gaugeRepo, log)
+	go Poll(ctx, GetCounterMetrics, 100*time.Millisecond, counterRepo, log)
 
 	// Wait 90 ms, it is too early to have any data.
 	time.Sleep(90 * time.Millisecond)
-	for name := range repos {
-		require.Zero(t, repos[name].Size())
-	}
+	require.Zero(t, gaugeRepo.Size())
+	require.Zero(t, counterRepo.Size())
 
 	// Next 20 ms we should have full  repositories.
-	require.Eventually(t,
-		func() bool {
-			for name := range repos {
-				if repos[name].Size() == 0 {
-					return false
-				}
-			}
-			return true
-		},
+	require.Eventually(t, func() bool { return gaugeRepo.Size() > 0 && counterRepo.Size() > 0 },
 		20*time.Millisecond, 5*time.Millisecond)
 
 	cancel()

@@ -14,7 +14,7 @@ const (
 	counter = "counter"
 )
 
-func Poll(ctx context.Context, interval time.Duration, repos map[string]Repository, log logger) {
+func Poll(ctx context.Context, fn func(r repository), interval time.Duration, repo repository, log logger) {
 	log.Info("Polling started with interval:", interval.String())
 	pollTimer := time.NewTicker(interval)
 	defer pollTimer.Stop()
@@ -24,21 +24,12 @@ func Poll(ctx context.Context, interval time.Duration, repos map[string]Reposito
 		case <-ctx.Done():
 			return
 		case <-pollTimer.C:
-			for name := range repos {
-				switch name {
-				case gauge:
-					getGaugeMetrics(repos[name])
-				case counter:
-					getCounterMetrics(repos[name])
-				default:
-					log.Fatal("[Poll] unknown metrics type:", name)
-				}
-			}
+			fn(repo)
 		}
 	}
 }
 
-func getCounterMetrics(repo Repository) {
+func GetCounterMetrics(repo repository) {
 	cnt, ok := repo.Get("PollCount")
 	if !ok {
 		repo.Set("PollCount", types.CounterToBytes(types.Counter(0)))
@@ -49,7 +40,7 @@ func getCounterMetrics(repo Repository) {
 	repo.Set("PollCount", types.CounterToBytes(cntToSet))
 }
 
-func getGaugeMetrics(repo Repository) {
+func GetGaugeMetrics(repo repository) {
 	memStats := runtime.MemStats{}
 	runtime.ReadMemStats(&memStats)
 
@@ -91,7 +82,7 @@ type logger interface {
 	Fatal(msg ...string)
 }
 
-type Repository interface {
+type repository interface {
 	Set(k string, v []byte)
 	Get(k string) ([]byte, bool)
 	ForEach(ctx context.Context, fn func(k string, v []byte) error) error

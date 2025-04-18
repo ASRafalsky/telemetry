@@ -24,32 +24,36 @@ func JSONPostHandler(repo map[string]Repository, fn dataHandler) func(http.Respo
 			return
 		}
 		defer req.Body.Close()
-		m := transport.Metrics{}
-		if err = easyjson.Unmarshal(buf, &m); err != nil {
-			http.Error(res, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		var status int
-		m, status, err = fn(repo[m.MType], m)
-		if err != nil {
-			http.Error(res, err.Error(), status)
-			return
-		}
-
-		resBuf, err := easyjson.Marshal(&m)
+		metricList, err := transport.DeserializeMetrics(buf)
 		if err != nil {
 			http.Error(res, err.Error(), http.StatusInternalServerError)
 			return
 		}
-
-		res.Header().Set("Content-Type", "application/json")
-		if _, err = res.Write(resBuf); err != nil {
-			http.Error(res, err.Error(), http.StatusInternalServerError)
-			return
+		if len(metricList) == 0 {
+			http.Error(res, "metrics list is empty", http.StatusInternalServerError)
 		}
+		for _, m := range metricList {
+			var status int
+			m, status, err = fn(repo[m.MType], m)
+			if err != nil {
+				http.Error(res, err.Error(), status)
+				return
+			}
 
-		res.WriteHeader(http.StatusOK)
+			resBuf, err := easyjson.Marshal(&m)
+			if err != nil {
+				http.Error(res, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			res.Header().Set("Content-Type", "application/json")
+			if _, err = res.Write(resBuf); err != nil {
+				http.Error(res, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			res.WriteHeader(http.StatusOK)
+		}
 	}
 }
 

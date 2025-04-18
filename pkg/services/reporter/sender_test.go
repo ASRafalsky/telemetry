@@ -11,7 +11,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/gojek/heimdall/v7/httpclient"
-	"github.com/mailru/easyjson"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ASRafalsky/telemetry/internal/storage"
@@ -33,7 +32,7 @@ func TestSend(t *testing.T) {
 	// Add handlers and router.
 	gaugeHandler := func() http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			require.Equal(t, "gauge_var", chi.URLParam(r, "name"))
+			require.Contains(t, []string{"gauge_var1", "gauge_var2"}, chi.URLParam(r, "name"))
 			require.Equal(t, r.Header.Get("Content-Type"), "text/plain")
 			value := chi.URLParam(r, "value")
 			require.Equal(t, testValStr, value)
@@ -42,7 +41,7 @@ func TestSend(t *testing.T) {
 	}
 	counterHandler := func() http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			require.Equal(t, "counter_var", chi.URLParam(r, "name"))
+			require.Contains(t, []string{"counter_var1", "counter_var2"}, chi.URLParam(r, "name"))
 			require.Equal(t, r.Header.Get("Content-Type"), "text/plain")
 			value := chi.URLParam(r, "value")
 			require.Equal(t, testValStr, value)
@@ -67,23 +66,26 @@ func TestSend(t *testing.T) {
 				require.NoError(t, err)
 			}
 			defer require.NoError(t, r.Body.Close())
-			m := transport.Metrics{}
-			require.NoError(t, easyjson.Unmarshal(buf, &m))
+			metricList, err := transport.DeserializeMetrics(buf)
+			require.NoError(t, err)
+			require.NotEmpty(t, metricList)
 
-			switch m.MType {
-			case counter:
-				require.Equal(t, "counter_var", m.ID)
-				require.NotNil(t, m.Delta)
-				require.Equal(t, testValInt64, *m.Delta)
-				require.Nil(t, m.Value)
-				cJSONFound = true
-			case gauge:
-				require.Equal(t, "gauge_var", m.ID)
-				require.NotNil(t, m.Value)
-				require.Equal(t, testValFloat, *m.Value)
-				require.Nil(t, m.Delta)
-				gJSONFound = true
-			default:
+			for _, m := range metricList {
+				switch m.MType {
+				case counter:
+					require.Contains(t, []string{"counter_var1", "counter_var2"}, m.ID)
+					require.NotNil(t, m.Delta)
+					require.Equal(t, testValInt64, *m.Delta)
+					require.Nil(t, m.Value)
+					cJSONFound = true
+				case gauge:
+					require.Contains(t, []string{"gauge_var1", "gauge_var2"}, m.ID)
+					require.NotNil(t, m.Value)
+					require.Equal(t, testValFloat, *m.Value)
+					require.Nil(t, m.Delta)
+					gJSONFound = true
+				default:
+				}
 			}
 		}
 	}
@@ -116,8 +118,10 @@ func TestSend(t *testing.T) {
 	counterData, err := types.ParseCounter(testValStr)
 	require.NoError(t, err)
 
-	gaugeRepo.Set("gauge_var", types.GaugeToBytes(gaugeData))
-	counterRepo.Set("counter_var", types.CounterToBytes(counterData))
+	gaugeRepo.Set("gauge_var1", types.GaugeToBytes(gaugeData))
+	gaugeRepo.Set("gauge_var2", types.GaugeToBytes(gaugeData))
+	counterRepo.Set("counter_var1", types.CounterToBytes(counterData))
+	counterRepo.Set("counter_var2", types.CounterToBytes(counterData))
 
 	sendGaugeData(context.Background(), srv.URL, gaugeRepo, client)
 	sendCounterData(context.Background(), srv.URL, counterRepo, client)

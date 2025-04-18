@@ -38,10 +38,14 @@ func main() {
 
 	ctx := context.Background()
 
-	go backupRepo(ctx, map[string]backup.Repository{
-		handlers.Gauge:   gaugeRepo,
-		handlers.Counter: counterRepo,
-	}, time.Duration(storePeriod)*time.Second, dump, *Log)
+	if storePeriod == 0 {
+
+	} else {
+		go backupRepo(ctx, map[string]backup.Repository{
+			handlers.Gauge:   gaugeRepo,
+			handlers.Counter: counterRepo,
+		}, time.Duration(storePeriod)*time.Second, dump, *Log)
+	}
 
 	Log.Fatal("Failed to start server:" +
 		zap.String("err:", http.ListenAndServe(address, handlers.WithLogging(newRouter(map[string]handlers.Repository{
