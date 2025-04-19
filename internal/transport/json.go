@@ -33,7 +33,7 @@ func DeserializeMetrics(buf []byte) ([]Metrics, error) {
 	return metricList, nil
 }
 
-func SerializeMetrics(m Metrics, w writer) error {
+func SerializeMetrics(m *Metrics, w writer) error {
 	buf, err := json.Marshal(m)
 	if err != nil {
 		return err

@@ -24,12 +24,8 @@ import (
 func TestServerStatuses(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
-	gaugeRepo := storage.New[string, []byte]()
-	counterRepo := storage.New[string, []byte]()
-	srv := httptest.NewServer(handlers.WithLogging(newRouter(map[string]handlers.Repository{
-		handlers.Gauge:   gaugeRepo,
-		handlers.Counter: counterRepo,
-	}), Log))
+	repo := storage.New[string, []byte]()
+	srv := httptest.NewServer(handlers.WithLogging(newRouter(repo), Log))
 	defer srv.Close()
 
 	header := http.Header{
@@ -197,12 +193,8 @@ func TestServerStatuses(t *testing.T) {
 func Test_JSON(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
-	gaugeRepo := storage.New[string, []byte]()
-	counterRepo := storage.New[string, []byte]()
-	srv := httptest.NewServer(handlers.WithLogging(newRouter(map[string]handlers.Repository{
-		handlers.Gauge:   gaugeRepo,
-		handlers.Counter: counterRepo,
-	}), Log))
+	repo := storage.New[string, []byte]()
+	srv := httptest.NewServer(handlers.WithLogging(newRouter(repo), Log))
 	defer srv.Close()
 
 	// Create a new HTTP client with a default timeout
@@ -485,12 +477,8 @@ func Test_JSON(t *testing.T) {
 func Test_JSON_encoding(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
-	gaugeRepo := storage.New[string, []byte]()
-	counterRepo := storage.New[string, []byte]()
-	srv := httptest.NewServer(handlers.WithLogging(newRouter(map[string]handlers.Repository{
-		handlers.Gauge:   gaugeRepo,
-		handlers.Counter: counterRepo,
-	}), Log))
+	repo := storage.New[string, []byte]()
+	srv := httptest.NewServer(handlers.WithLogging(newRouter(repo), Log))
 	defer srv.Close()
 
 	// Create a new HTTP client with a default timeout
@@ -787,12 +775,8 @@ func Test_JSON_encoding(t *testing.T) {
 func Test_POST_GET(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
-	gaugeRepo := storage.New[string, []byte]()
-	counterRepo := storage.New[string, []byte]()
-	srv := httptest.NewServer(handlers.WithLogging(newRouter(map[string]handlers.Repository{
-		handlers.Gauge:   gaugeRepo,
-		handlers.Counter: counterRepo,
-	}), Log))
+	repo := storage.New[string, []byte]()
+	srv := httptest.NewServer(handlers.WithLogging(newRouter(repo), Log))
 	defer srv.Close()
 	// Create a new HTTP client with a default timeout
 	timeout := 1000 * time.Millisecond

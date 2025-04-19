@@ -1,25 +1,20 @@
 package backup
 
 import (
+	"compress/gzip"
 	"context"
-	"encoding/gob"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
+	"github.com/mailru/easyjson"
 	"go.uber.org/multierr"
+
+	"github.com/ASRafalsky/telemetry/internal/transport"
 )
 
-// Looks stupid enough store repository name for each entry, but...)))
-type entry struct {
-	Name  string
-	Key   string
-	Value []byte
-}
-
-func DumpRepoToFile(path string, repos map[string]Repository, mode os.FileMode) error {
+func DumpRepoToFile(path string, repo repository, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(path), addXPerm(mode)); err != nil {
 		return err
 	}
@@ -27,38 +22,40 @@ func DumpRepoToFile(path string, repos map[string]Repository, mode os.FileMode) 
 	if err != nil {
 		return err
 	}
+	defer f.Sync()
 	defer f.Close()
 
-	return dump(gob.NewEncoder(f), repos)
+	zw := gzip.NewWriter(f)
+	defer zw.Close()
+	return dump(zw, repo)
 }
 
-func dump(enc Encoder, repos map[string]Repository) error {
-	if len(repos) == 0 {
-		return errors.New("no repository found")
+func dump(w writer, repo repository) error {
+	if repo.Size() == 0 {
+		return errors.New("repository is empty")
 	}
-
-	for name, repo := range repos {
-		if err := repo.ForEach(context.Background(), func(k string, v []byte) error {
-			return enc.Encode(entry{
-				Name:  name,
-				Key:   k,
-				Value: v,
-			})
-		}); err != nil {
-			return err
-		}
+	if err := repo.ForEach(context.Background(), func(k string, v []byte) error {
+		_, err := w.Write(v)
+		return err
+	}); err != nil {
+		return err
 	}
 	return nil
 }
 
-func RestoreRepoFromFile(path string, repos map[string]Repository, remove bool) error {
+func RestoreRepoFromFile(path string, repo repository, remove bool) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	errRes := restore(gob.NewDecoder(f), repos)
+	zr, err := gzip.NewReader(f)
+	if err != nil {
+		return err
+	}
+	defer zr.Close()
+	errRes := restore(zr, repo)
 
 	if remove {
 		if err := os.Remove(path); err != nil {
@@ -69,23 +66,23 @@ func RestoreRepoFromFile(path string, repos map[string]Repository, remove bool) 
 	return errRes
 }
 
-func restore(dec Decoder, repos map[string]Repository) error {
-	var errRes error
-	for {
-		var repoEntry entry
-		if err := dec.Decode(&repoEntry); err != nil {
-			if err != io.EOF {
-				return err
-			}
-			break
-		}
-		if _, ok := repos[repoEntry.Name]; ok {
-			repos[repoEntry.Name].Set(repoEntry.Key, repoEntry.Value)
-			continue
-		}
-		errRes = multierr.Append(errRes, fmt.Errorf("%s not found", repoEntry.Name))
+func restore(r reader, repo repository) error {
+	buf, err := io.ReadAll(r)
+	if err != nil {
+		return err
 	}
-	return errRes
+	metrics, err := transport.DeserializeMetrics(buf)
+	if err != nil {
+		return err
+	}
+	for _, m := range metrics {
+		buf, err := easyjson.Marshal(m)
+		if err != nil {
+			return err
+		}
+		repo.Set(m.MType+m.ID, buf)
+	}
+	return nil
 }
 
 func addXPerm(mode os.FileMode) os.FileMode {
@@ -104,14 +101,20 @@ func addXPerm(mode os.FileMode) os.FileMode {
 	return mode.Perm()
 }
 
-type Repository interface {
+type repository interface {
 	Set(k string, v []byte)
+	Get(k string) ([]byte, bool)
 	ForEach(ctx context.Context, fn func(k string, v []byte) error) error
 	Size() int
+	Delete(k string)
 }
 
-type Encoder interface {
-	Encode(v any) error
+type writer interface {
+	Write(p []byte) (n int, err error)
+}
+
+type reader interface {
+	Read(p []byte) (n int, err error)
 }
 
 type Decoder interface {

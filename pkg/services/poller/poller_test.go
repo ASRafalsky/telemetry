@@ -2,6 +2,7 @@ package poller
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,13 +15,12 @@ import (
 )
 
 func TestGetMetrics(t *testing.T) {
-	gaugeRepo := storage.New[string, []byte]()
-	counterRepo := storage.New[string, []byte]()
+	repo := storage.New[string, []byte]()
 
 	t.Run("getCounterMetrics", func(t *testing.T) {
 		for i := range 10 {
-			GetCounterMetrics(counterRepo)
-			value, ok := counterRepo.Get("PollCount")
+			GetCounterMetrics(repo)
+			value, ok := repo.Get(counter + "PollCount")
 			assert.True(t, ok)
 			assert.Equal(t, types.Counter(i), types.BytesToCounter(value), i)
 		}
@@ -29,8 +29,8 @@ func TestGetMetrics(t *testing.T) {
 	t.Run("getGaugeMetrics", func(t *testing.T) {
 		var previousValue types.Gauge
 		for range 10 {
-			GetGaugeMetrics(gaugeRepo)
-			value, ok := gaugeRepo.Get("RandomValue")
+			GetGaugeMetrics(repo)
+			value, ok := repo.Get(gauge + "RandomValue")
 			assert.True(t, ok)
 			gaugeValue := types.BytesToGauge(value)
 			assert.NotZero(t, gaugeValue)
@@ -41,23 +41,36 @@ func TestGetMetrics(t *testing.T) {
 }
 
 func TestPoll(t *testing.T) {
-	gaugeRepo := storage.New[string, []byte]()
-	counterRepo := storage.New[string, []byte]()
+	repo := storage.New[string, []byte]()
 	ctx, cancel := context.WithCancel(context.Background())
 
 	log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
 	defer log.Sync()
-	go Poll(ctx, GetGaugeMetrics, 100*time.Millisecond, gaugeRepo, log)
-	go Poll(ctx, GetCounterMetrics, 100*time.Millisecond, counterRepo, log)
+	go Poll(ctx, GetGaugeMetrics, 100*time.Millisecond, repo, log)
+	go Poll(ctx, GetCounterMetrics, 100*time.Millisecond, repo, log)
 
 	// Wait 90 ms, it is too early to have any data.
 	time.Sleep(90 * time.Millisecond)
-	require.Zero(t, gaugeRepo.Size())
-	require.Zero(t, counterRepo.Size())
+	require.Zero(t, repo.Size())
 
 	// Next 20 ms we should have full  repositories.
-	require.Eventually(t, func() bool { return gaugeRepo.Size() > 0 && counterRepo.Size() > 0 },
+	require.Eventually(t, func() bool {
+		var (
+			gaugeFound   bool
+			counterFound bool
+		)
+		repo.ForEach(context.Background(), func(k string, v []byte) error {
+			if strings.HasPrefix(k, gauge) {
+				gaugeFound = true
+			}
+			if strings.HasPrefix(k, counter) {
+				counterFound = true
+			}
+			return nil
+		})
+		return gaugeFound && counterFound
+	},
 		20*time.Millisecond, 5*time.Millisecond)
 
 	cancel()

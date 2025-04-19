@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gojek/heimdall/v7/httpclient"
@@ -32,7 +33,7 @@ func Send(ctx context.Context, addr, mType string, interval time.Duration, clien
 		case <-ctx.Done():
 			return
 		case <-sendTimer.C:
-			if err := sendJSONData(ctx, addr, mType, repo, client); err != nil {
+			if err := sendJSONData(ctx, addr, "", repo, client); err != nil {
 				log.Error("[send/json] failed to send data] for", mType, ":", err.Error())
 			}
 		}
@@ -76,7 +77,10 @@ func sendCounterData(ctx context.Context, addr string, repo repository, client *
 	}
 	var errRes error
 	err := repo.ForEach(ctx, func(k string, v []byte) error {
-		urlData := addr + "/update/counter/" + k + "/" + types.BytesToCounter(v).String()
+		if !strings.HasPrefix(k, counter) {
+			return nil
+		}
+		urlData := addr + "/update/counter/" + strings.TrimPrefix(k, counter) + "/" + types.BytesToCounter(v).String()
 		resp, err := client.Post(urlData, nil, header)
 		if err != nil {
 			errRes = multierr.Append(errRes, fmt.Errorf("failed to send data for %s; %w", k, err))
@@ -99,7 +103,10 @@ func sendGaugeData(ctx context.Context, addr string, repo repository, client *ht
 
 	var errRes error
 	err := repo.ForEach(ctx, func(k string, v []byte) error {
-		urlData := addr + "/update/gauge/" + k + "/" + types.BytesToGauge(v).String()
+		if !strings.HasPrefix(k, gauge) {
+			return nil
+		}
+		urlData := addr + "/update/gauge/" + strings.TrimPrefix(k, gauge) + "/" + types.BytesToGauge(v).String()
 		resp, err := client.Post(urlData, nil, header)
 		if err != nil {
 			errRes = multierr.Append(errRes, fmt.Errorf("failed to send data for %s; %w", k, err))
@@ -118,12 +125,31 @@ func sendGaugeData(ctx context.Context, addr string, repo repository, client *ht
 func serializeMetrics(ctx context.Context, mtype string, repo repository, wc writerCloser) error {
 	var errRes error
 	_ = repo.ForEach(ctx, func(k string, v []byte) error {
-		metric, err := dataToMetrics(mtype, k, v)
+		var (
+			key        string
+			typeToSend string
+		)
+		switch {
+		case strings.HasPrefix(k, gauge):
+			key = strings.TrimPrefix(k, gauge)
+			typeToSend = gauge
+		case strings.HasPrefix(k, counter):
+			key = strings.TrimPrefix(k, counter)
+			typeToSend = counter
+		default:
+			return nil
+		}
+
+		if mtype != "" && mtype != typeToSend {
+			return nil
+		}
+
+		metric, err := dataToMetrics(typeToSend, key, v)
 		if err != nil {
 			errRes = multierr.Append(errRes, fmt.Errorf("failed to marshal data for %s(%s); %w", mtype, k, err))
 			return nil
 		}
-		if err := transport.SerializeMetrics(metric, wc); err != nil {
+		if err := transport.SerializeMetrics(&metric, wc); err != nil {
 			errRes = multierr.Append(errRes, fmt.Errorf("failed to compress data for %s(%s); %w", mtype, k, err))
 			return nil
 		}

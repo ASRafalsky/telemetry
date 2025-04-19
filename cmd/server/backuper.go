@@ -9,15 +9,22 @@ import (
 )
 
 func backupRepo(
-	ctx context.Context, data map[string]backup.Repository, interval time.Duration, path string, l log.Logger,
+	ctx context.Context, data repository, interval int, path string, l log.Logger,
 ) {
-	l.Info("Backuping repository started with interval: "+interval.String(), "path:", path)
-	timer := time.NewTimer(interval)
-	defer timer.Stop()
+	var timer *time.Timer
+	if interval > 0 {
+		timeInt := time.Duration(interval) * time.Second
+		l.Info("Backuping repository started with interval: "+timeInt.String(), "path:", path)
+		timer = time.NewTimer(timeInt)
+		defer timer.Stop()
+	}
 
 	for ctx.Err() == nil {
 		select {
 		case <-ctx.Done():
+			if err := backup.DumpRepoToFile(path, data, 0o644); err != nil {
+				l.Error("Failed to dump data to file", path, err.Error())
+			}
 			return
 		case <-timer.C:
 			if err := backup.DumpRepoToFile(path, data, 0o644); err != nil {
@@ -27,6 +34,6 @@ func backupRepo(
 	}
 }
 
-func restoreRepo(path string, repos map[string]backup.Repository) error {
-	return backup.RestoreRepoFromFile(path, repos, false)
+func restoreRepo(path string, repo repository) error {
+	return backup.RestoreRepoFromFile(path, repo, false)
 }
