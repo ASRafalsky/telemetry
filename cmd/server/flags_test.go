@@ -7,8 +7,11 @@ import (
 )
 
 func TestParseFlags_Default(t *testing.T) {
-	addr, loglevel, path := parseFlags()
-	require.Equal(t, addr, ":8080")
-	require.Equal(t, loglevel, "info")
-	require.Empty(t, path)
+	address, logLevel, logpPath, dumpPath, storePeriod, restore := parseFlags()
+	require.Equal(t, address, ":8080")
+	require.Equal(t, logLevel, "info")
+	require.Empty(t, logpPath)
+	require.Equal(t, "./dump/dump", dumpPath)
+	require.Equal(t, 300, storePeriod)
+	require.False(t, restore)
 }

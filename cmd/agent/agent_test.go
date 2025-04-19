@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/mailru/easyjson"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ASRafalsky/telemetry/internal/log"
@@ -61,18 +60,22 @@ func TestAgent(t *testing.T) {
 				require.NoError(t, err)
 			}
 			defer require.NoError(t, r.Body.Close())
-			m := transport.Metrics{}
-			require.NoError(t, easyjson.Unmarshal(buf, &m))
-			switch m.MType {
-			case counter:
-				require.NotNil(t, m.Delta)
-				require.Nil(t, m.Value)
-				cJSONFound = true
-			case gauge:
-				require.NotNil(t, m.Value)
-				require.Nil(t, m.Delta)
-				gJSONFound = true
-			default:
+			metricList, err := transport.DeserializeMetrics(buf)
+			require.NoError(t, err)
+			require.NotEmpty(t, metricList)
+
+			for _, m := range metricList {
+				switch m.MType {
+				case counter:
+					require.NotNil(t, m.Delta)
+					require.Nil(t, m.Value)
+					cJSONFound = true
+				case gauge:
+					require.NotNil(t, m.Value)
+					require.Nil(t, m.Delta)
+					gJSONFound = true
+				default:
+				}
 			}
 		}
 	}
@@ -102,17 +105,14 @@ func TestAgent(t *testing.T) {
 	gaugeRepo := storage.New[string, []byte]()
 	counterRepo := storage.New[string, []byte]()
 
-	log, err := log.AddLoggerWith("info", "")
+	logeer, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
 
-	go poller.Poll(ctx, 20*time.Millisecond, map[string]poller.Repository{
-		gauge:   gaugeRepo,
-		counter: counterRepo,
-	}, log)
-	go reporter.Send(ctx, srv.URL, 100*time.Millisecond, client, map[string]reporter.Repository{
-		gauge:   gaugeRepo,
-		counter: counterRepo,
-	}, log)
+	go poller.Poll(ctx, poller.GetGaugeMetrics, 20*time.Millisecond, gaugeRepo, logeer)
+	go poller.Poll(ctx, poller.GetCounterMetrics, 20*time.Millisecond, counterRepo, logeer)
+
+	go reporter.Send(ctx, srv.URL, gauge, 100*time.Millisecond, client, gaugeRepo, logeer)
+	go reporter.Send(ctx, srv.URL, counter, 100*time.Millisecond, client, counterRepo, logeer)
 
 	require.Eventually(t,
 		func() bool {

@@ -6,10 +6,10 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gojek/heimdall/v7/httpclient"
-	"github.com/mailru/easyjson"
 	"go.uber.org/multierr"
 
 	"github.com/ASRafalsky/telemetry/internal/transport"
@@ -21,8 +21,8 @@ const (
 	counter = "counter"
 )
 
-func Send(ctx context.Context, addr string, interval time.Duration, client *httpclient.Client,
-	repos map[string]Repository, log logger) {
+func Send(ctx context.Context, addr, mType string, interval time.Duration, client *httpclient.Client,
+	repo repository, log logger) {
 	log.Info("Reporeter started with interval:", interval.String())
 
 	sendTimer := time.NewTicker(interval)
@@ -33,76 +33,55 @@ func Send(ctx context.Context, addr string, interval time.Duration, client *http
 		case <-ctx.Done():
 			return
 		case <-sendTimer.C:
-			for name := range repos {
-				switch name {
-				case gauge:
-					if err := sendJSONData(ctx, addr, name, repos[name], client); err != nil {
-						log.Error("[send/json] failed to send data] for", name, ":", err.Error())
-					}
-				case counter:
-					if err := sendJSONData(ctx, addr, name, repos[name], client); err != nil {
-						log.Error("[send/json] failed to send data] for", name, ":", err.Error())
-					}
-				default:
-					log.Fatal("[Send] unknown metrics type:", name)
-				}
+			if err := sendJSONData(ctx, addr, "", repo, client); err != nil {
+				log.Error("[send/json] failed to send data] for", mType, ":", err.Error())
 			}
 		}
 	}
 }
 
-func sendJSONData(ctx context.Context, addr, mtype string, repo Repository, client *httpclient.Client) error {
+func sendJSONData(ctx context.Context, addr, mtype string, repo repository, client *httpclient.Client) error {
 	header := http.Header{
 		"Content-Type": []string{"application/json"},
 	}
-	var errRes error
-	err := repo.ForEach(ctx, func(k string, v []byte) error {
-		urlData := addr + "/update/"
-		value, err := dataToMsg(mtype, k, v)
-		if err != nil {
-			errRes = multierr.Append(errRes, fmt.Errorf("failed to marshal data for %s(%s); %w", mtype, k, err))
-			return nil
-		}
+	var (
+		bufToSend = bytes.NewBuffer(nil)
+		errRes    error
+	)
 
-		var resp *http.Response
-		buf, err := gzipData(value)
-		if err == nil {
-			header.Set("Content-Encoding", "gzip")
-			resp, err = client.Post(urlData, buf, header)
-		} else {
-			errRes = multierr.Append(errRes, fmt.Errorf("failed to compress data for %s(%s); %w", mtype, k, err))
-			resp, err = client.Post(urlData, bytes.NewReader(value), header)
-		}
-		defer resp.Body.Close()
-
+	zw := gzip.NewWriter(bufToSend)
+	err := serializeMetrics(ctx, mtype, repo, zw)
+	zw.Close()
+	if bufToSend.Len() == 0 {
 		if err != nil {
-			errRes = multierr.Append(errRes, fmt.Errorf("failed to send data for %s(%s); %w", mtype, k, err))
-			return nil
-		}
-		if resp.StatusCode != http.StatusOK {
-			errRes = multierr.Append(errRes, fmt.Errorf("bad status for %s(%s): %s", mtype, k, resp.Status))
+			return err
 		}
 		return nil
-	})
+	}
+	header.Set("Content-Encoding", "gzip")
+	resp, err := client.Post(addr+"/update/", bufToSend, header)
 	if err != nil {
-		errRes = multierr.Append(errRes, err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		errRes = multierr.Append(errRes, fmt.Errorf("bad status for %s: %s", mtype, resp.Status))
 	}
 	return errRes
 }
 
-func sendCounterData(ctx context.Context, addr string, repo Repository, client *httpclient.Client) {
+func sendCounterData(ctx context.Context, addr string, repo repository, client *httpclient.Client) {
 	header := http.Header{
 		"Content-Type": []string{"text/plain"},
 	}
 	var errRes error
 	err := repo.ForEach(ctx, func(k string, v []byte) error {
-		urlData := addr + "/update/counter/" + k + "/" + types.BytesToCounter(v).String()
-		value, err := dataToMsg("gauge", k, v)
-		if err != nil {
-			errRes = multierr.Append(errRes, fmt.Errorf("failed to marshal data for %s; %w", k, err))
+		if !strings.HasPrefix(k, counter) {
 			return nil
 		}
-		resp, err := client.Post(urlData, bytes.NewReader(value), header)
+		urlData := addr + "/update/counter/" + strings.TrimPrefix(k, counter) + "/" + types.BytesToCounter(v).String()
+		resp, err := client.Post(urlData, nil, header)
 		if err != nil {
 			errRes = multierr.Append(errRes, fmt.Errorf("failed to send data for %s; %w", k, err))
 			return nil
@@ -117,20 +96,18 @@ func sendCounterData(ctx context.Context, addr string, repo Repository, client *
 	}
 }
 
-func sendGaugeData(ctx context.Context, addr string, repo Repository, client *httpclient.Client) {
+func sendGaugeData(ctx context.Context, addr string, repo repository, client *httpclient.Client) {
 	header := http.Header{
 		"Content-Type": []string{"text/plain"},
 	}
 
 	var errRes error
 	err := repo.ForEach(ctx, func(k string, v []byte) error {
-		urlData := addr + "/update/gauge/" + k + "/" + types.BytesToGauge(v).String()
-		value, err := dataToMsg("gauge", k, v)
-		if err != nil {
-			errRes = multierr.Append(errRes, fmt.Errorf("failed to marshal data for %s; %w", k, err))
+		if !strings.HasPrefix(k, gauge) {
 			return nil
 		}
-		resp, err := client.Post(urlData, bytes.NewReader(value), header)
+		urlData := addr + "/update/gauge/" + strings.TrimPrefix(k, gauge) + "/" + types.BytesToGauge(v).String()
+		resp, err := client.Post(urlData, nil, header)
 		if err != nil {
 			errRes = multierr.Append(errRes, fmt.Errorf("failed to send data for %s; %w", k, err))
 			return nil
@@ -145,7 +122,43 @@ func sendGaugeData(ctx context.Context, addr string, repo Repository, client *ht
 	}
 }
 
-func dataToMsg(mtype, name string, d []byte) ([]byte, error) {
+func serializeMetrics(ctx context.Context, mtype string, repo repository, wc writerCloser) error {
+	var errRes error
+	_ = repo.ForEach(ctx, func(k string, v []byte) error {
+		var (
+			key        string
+			typeToSend string
+		)
+		switch {
+		case strings.HasPrefix(k, gauge):
+			key = strings.TrimPrefix(k, gauge)
+			typeToSend = gauge
+		case strings.HasPrefix(k, counter):
+			key = strings.TrimPrefix(k, counter)
+			typeToSend = counter
+		default:
+			return nil
+		}
+
+		if mtype != "" && mtype != typeToSend {
+			return nil
+		}
+
+		metric, err := dataToMetrics(typeToSend, key, v)
+		if err != nil {
+			errRes = multierr.Append(errRes, fmt.Errorf("failed to marshal data for %s(%s); %w", mtype, k, err))
+			return nil
+		}
+		if err := transport.SerializeMetrics(&metric, wc); err != nil {
+			errRes = multierr.Append(errRes, fmt.Errorf("failed to compress data for %s(%s); %w", mtype, k, err))
+			return nil
+		}
+		return nil
+	})
+	return errRes
+}
+
+func dataToMetrics(mtype, name string, d []byte) (transport.Metrics, error) {
 	metrics := transport.Metrics{
 		ID:    name,
 		MType: mtype,
@@ -158,21 +171,9 @@ func dataToMsg(mtype, name string, d []byte) ([]byte, error) {
 		value := float64(types.BytesToGauge(d))
 		metrics.Value = &value
 	default:
-		return nil, fmt.Errorf("unknown metrics type: %s", mtype)
+		return transport.Metrics{}, fmt.Errorf("unknown metrics type: %s", mtype)
 	}
-	return easyjson.Marshal(metrics)
-}
-
-func gzipData(value []byte) (*bytes.Buffer, error) {
-	bufToSend := bytes.NewBuffer(nil)
-	zr := gzip.NewWriter(bufToSend)
-	if _, err := zr.Write(value); err != nil {
-		return nil, err
-	}
-	if err := zr.Close(); err != nil {
-		return nil, err
-	}
-	return bufToSend, nil
+	return metrics, nil
 }
 
 type logger interface {
@@ -183,10 +184,14 @@ type logger interface {
 	Fatal(msg ...string)
 }
 
-type Repository interface {
+type repository interface {
 	Set(k string, v []byte)
 	Get(k string) ([]byte, bool)
 	ForEach(ctx context.Context, fn func(k string, v []byte) error) error
 	Size() int
-	Delete(k string)
+}
+
+type writerCloser interface {
+	Write(p []byte) (n int, err error)
+	Close() error
 }

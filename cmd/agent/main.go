@@ -28,21 +28,14 @@ func main() {
 	client := NewClient()
 	ctx := context.Background()
 
-	gaugeRepo := storage.New[string, []byte]()
-	counterRepo := storage.New[string, []byte]()
+	repo := storage.New[string, []byte]()
 
 	logger.Info("Agent started with address:", "http://"+addr)
-	go poller.Poll(ctx, time.Duration(pollingPeriod)*time.Second,
-		map[string]poller.Repository{
-			gauge:   gaugeRepo,
-			counter: counterRepo,
-		},
-		logger)
-	go reporter.Send(ctx, "http://"+addr, time.Duration(sendPeriod)*time.Second, client, map[string]reporter.Repository{
-		gauge:   gaugeRepo,
-		counter: counterRepo,
-	},
-		logger)
+
+	go poller.Poll(ctx, poller.GetGaugeMetrics, time.Duration(pollingPeriod)*time.Second, repo, logger)
+	go poller.Poll(ctx, poller.GetCounterMetrics, time.Duration(pollingPeriod)*time.Second, repo, logger)
+
+	go reporter.Send(ctx, "http://"+addr, "", time.Duration(sendPeriod)*time.Second, client, repo, logger)
 
 	<-ctx.Done()
 }
