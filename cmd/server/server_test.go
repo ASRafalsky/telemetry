@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ASRafalsky/telemetry/internal/log"
-	"github.com/ASRafalsky/telemetry/internal/storage"
 	"github.com/ASRafalsky/telemetry/internal/transport"
 	"github.com/ASRafalsky/telemetry/pkg/services/handlers"
 )
@@ -24,7 +23,7 @@ import (
 func TestServerStatuses(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
-	repo := storage.New[string, []byte]()
+	repo := newExtendedRepository()
 	srv := httptest.NewServer(handlers.WithLogging(newRouter(repo), Log))
 	defer srv.Close()
 
@@ -193,7 +192,7 @@ func TestServerStatuses(t *testing.T) {
 func Test_JSON(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
-	repo := storage.New[string, []byte]()
+	repo := newExtendedRepository()
 	srv := httptest.NewServer(handlers.WithLogging(newRouter(repo), Log))
 	defer srv.Close()
 
@@ -477,7 +476,7 @@ func Test_JSON(t *testing.T) {
 func Test_JSON_encoding(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
-	repo := storage.New[string, []byte]()
+	repo := newExtendedRepository()
 	srv := httptest.NewServer(handlers.WithLogging(newRouter(repo), Log))
 	defer srv.Close()
 
@@ -775,7 +774,7 @@ func Test_JSON_encoding(t *testing.T) {
 func Test_POST_GET(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
-	repo := storage.New[string, []byte]()
+	repo := newExtendedRepository()
 	srv := httptest.NewServer(handlers.WithLogging(newRouter(repo), Log))
 	defer srv.Close()
 	// Create a new HTTP client with a default timeout

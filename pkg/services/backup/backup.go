@@ -14,19 +14,30 @@ import (
 	"github.com/ASRafalsky/telemetry/internal/transport"
 )
 
-func DumpRepoToFile(path string, repo repository, mode os.FileMode) error {
-	if err := os.MkdirAll(filepath.Dir(path), addXPerm(mode)); err != nil {
+func DumpRepoToFile(path string, repo repository, mode os.FileMode) (err error) {
+	if err = os.MkdirAll(filepath.Dir(path), addXPerm(mode)); err != nil {
 		return err
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
 	if err != nil {
 		return err
 	}
-	defer f.Sync()
-	defer f.Close()
+
+	defer func() {
+		if errSync := f.Sync(); errSync != nil {
+			err = multierr.Append(err, errSync)
+		}
+		if errClose := f.Close(); errClose != nil {
+			err = multierr.Append(err, errClose)
+		}
+	}()
 
 	zw := gzip.NewWriter(f)
-	defer zw.Close()
+	defer func() {
+		if errClose := zw.Close(); errClose != nil {
+			err = multierr.Append(err, errClose)
+		}
+	}()
 	return dump(zw, repo)
 }
 
@@ -43,27 +54,35 @@ func dump(w writer, repo repository) error {
 	return nil
 }
 
-func RestoreRepoFromFile(path string, repo repository, remove bool) error {
+func RestoreRepoFromFile(path string, repo repository, remove bool) (err error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if errClose := f.Close(); errClose != nil {
+			err = multierr.Append(err, errClose)
+		}
+	}()
 
 	zr, err := gzip.NewReader(f)
 	if err != nil {
 		return err
 	}
-	defer zr.Close()
-	errRes := restore(zr, repo)
+	defer func() {
+		if errClose := zr.Close(); errClose != nil {
+			err = multierr.Append(err, errClose)
+		}
+	}()
+	err = restore(zr, repo)
 
 	if remove {
-		if err := os.Remove(path); err != nil {
-			errRes = multierr.Append(errRes, err)
+		if errRemove := os.Remove(path); errRemove != nil {
+			err = multierr.Append(err, errRemove)
 		}
 	}
 
-	return errRes
+	return err
 }
 
 func restore(r reader, repo repository) error {

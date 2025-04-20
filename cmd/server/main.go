@@ -8,7 +8,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/ASRafalsky/telemetry/internal/log"
-	"github.com/ASRafalsky/telemetry/internal/storage"
 	"github.com/ASRafalsky/telemetry/pkg/services/handlers"
 	"github.com/ASRafalsky/telemetry/pkg/templates"
 )
@@ -22,7 +21,7 @@ func main() {
 	}
 	defer Log.Sync()
 
-	repo := storage.New[string, []byte]()
+	repo := newExtendedRepository()
 
 	if restore {
 		if err = restoreRepo(dump, repo); err != nil {
@@ -31,14 +30,13 @@ func main() {
 	}
 
 	ctx := context.Background()
-
 	go backupRepo(ctx, repo, storePeriod, dump, *Log)
 
 	Log.Fatal("Failed to start server:" +
 		zap.String("err:", http.ListenAndServe(address, handlers.WithLogging(newRouter(repo), Log)).Error()).String)
 }
 
-func newRouter(repo repository) http.Handler {
+func newRouter(repo *extendedRepository) http.Handler {
 	r := chi.NewRouter()
 	r.Route("/", func(r chi.Router) {
 		r.Route("/update", func(r chi.Router) {
@@ -57,12 +55,4 @@ func newRouter(repo repository) http.Handler {
 		r.Get("/", handlers.WithCompress(handlers.AllGetHandler(templates.PrepareTemplate(), repo)))
 	})
 	return r
-}
-
-type repository interface {
-	Set(k string, v []byte)
-	Get(k string) ([]byte, bool)
-	ForEach(ctx context.Context, fn func(k string, v []byte) error) error
-	Size() int
-	Delete(k string)
 }
