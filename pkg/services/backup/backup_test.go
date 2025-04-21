@@ -27,14 +27,14 @@ func TestBackup(t *testing.T) {
 		idx := strconv.Itoa(i)
 		gaugeVal := float64(i)
 		counterVal := int64(i)
-		buf := bytes.NewBuffer([]byte{})
+		buf := bytes.NewBuffer(nil)
 		require.NoError(t, transport.SerializeMetrics(&transport.Metrics{
 			MType: gauge,
 			ID:    idx,
 			Value: &gaugeVal,
 		}, buf))
 		repo.Set(gauge+idx, buf.Bytes())
-		buf = bytes.NewBuffer([]byte{})
+		buf = bytes.NewBuffer(nil)
 		require.NoError(t, transport.SerializeMetrics(&transport.Metrics{
 			MType: counter,
 			ID:    idx,
@@ -62,9 +62,9 @@ func TestBackup(t *testing.T) {
 		gaugeVal := float64(i)
 		counterVal := int64(i)
 		buf, ok := restoredRepo.Get(gauge + idx)
+		require.True(t, ok)
 		m, err := transport.DeserializeMetrics(buf)
 		require.NoError(t, err)
-		require.True(t, ok)
 		require.Equal(t, gauge, m[0].MType)
 		require.Equal(t, idx, m[0].ID)
 		require.NotNil(t, m[0].Value)

@@ -1,12 +1,13 @@
 package backup
 
 import (
+	"bufio"
 	"compress/gzip"
 	"context"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/mailru/easyjson"
 	"go.uber.org/multierr"
@@ -46,6 +47,7 @@ func dump(w writer, repo repository) error {
 		return errors.New("repository is empty")
 	}
 	if err := repo.ForEach(context.Background(), func(k string, v []byte) error {
+		v = append(v, '\n')
 		_, err := w.Write(v)
 		return err
 	}); err != nil {
@@ -86,22 +88,16 @@ func RestoreRepoFromFile(path string, repo repository, remove bool) (err error) 
 }
 
 func restore(r reader, repo repository) error {
-	buf, err := io.ReadAll(r)
-	if err != nil {
-		return err
-	}
-	metrics, err := transport.DeserializeMetrics(buf)
-	if err != nil {
-		return err
-	}
-	for _, m := range metrics {
-		buf, err := easyjson.Marshal(m)
-		if err != nil {
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		buf := slices.Clone(scanner.Bytes())
+		m := transport.Metrics{}
+		if err := easyjson.Unmarshal(buf, &m); err != nil {
 			return err
 		}
 		repo.Set(m.MType+m.ID, buf)
 	}
-	return nil
+	return scanner.Err()
 }
 
 func addXPerm(mode os.FileMode) os.FileMode {

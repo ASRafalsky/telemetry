@@ -146,7 +146,8 @@ func serializeMetrics(ctx context.Context, mtype string, repo repository, wc wri
 
 		metric, err := dataToMetrics(typeToSend, key, v)
 		if err != nil {
-			errRes = multierr.Append(errRes, fmt.Errorf("failed to marshal data for %s(%s); %w", mtype, k, err))
+			errRes = multierr.Append(errRes,
+				fmt.Errorf("failed converting data to metric for %s(%s); %w", mtype, k, err))
 			return nil
 		}
 		if err := transport.SerializeMetrics(&metric, wc); err != nil {
