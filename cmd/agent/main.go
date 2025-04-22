@@ -25,7 +25,7 @@ func main() {
 
 	defer logger.Sync()
 
-	client := NewClient()
+	client := newClient()
 	ctx := context.Background()
 
 	repo := storage.New[string, []byte]()

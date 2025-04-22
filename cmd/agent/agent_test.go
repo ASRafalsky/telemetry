@@ -99,7 +99,7 @@ func TestAgent(t *testing.T) {
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
-	client := NewClient()
+	client := newClient()
 	ctx, cancel := context.WithCancel(context.Background())
 
 	gaugeRepo := storage.New[string, []byte]()
