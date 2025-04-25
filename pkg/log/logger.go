@@ -1,9 +1,12 @@
 package log
 
 import (
+	"errors"
 	"io"
+	"log"
 	"os"
 	"strings"
+	"syscall"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -47,36 +50,32 @@ func logRotator(path string, maxSize int, maxBackups int, compress bool) *lumber
 	}
 }
 
-func (l *Logger) Fatal(msg ...string) {
-	l.Logger.Fatal(buildMsg(msg...))
-}
-
-func (l *Logger) Error(msg ...string) {
-	l.Logger.Error(buildMsg(msg...))
-}
-
-func (l *Logger) Warn(msg ...string) {
-	l.Logger.Warn(buildMsg(msg...))
-}
-
-func (l *Logger) Debug(msg ...string) {
-	l.Logger.Debug(buildMsg(msg...))
-}
-
-func (l *Logger) Info(msg ...string) {
-	l.Logger.Info(buildMsg(msg...))
-}
-
-func buildMsg(msg ...string) string {
-	if len(msg) == 0 {
-		return ""
+func (l *Logger) Sync() {
+	if err := l.Logger.Sync(); err != nil && !errors.Is(err, syscall.ENOTTY) {
+		log.Printf("cannot sync logger: %v", err)
 	}
-	b := strings.Builder{}
-	for i := range msg {
-		b.WriteString(msg[i])
-		if i != len(msg)-1 {
-			b.WriteString(" ")
-		}
-	}
-	return b.String()
+}
+
+func (l *Logger) Fatal(msg string, add ...string) {
+	l.Logger.Fatal(buildMsg(msg, add...))
+}
+
+func (l *Logger) Error(msg string, add ...string) {
+	l.Logger.Error(buildMsg(msg, add...))
+}
+
+func (l *Logger) Warn(msg string, add ...string) {
+	l.Logger.Warn(buildMsg(msg, add...))
+}
+
+func (l *Logger) Debug(msg string, add ...string) {
+	l.Logger.Debug(buildMsg(msg, add...))
+}
+
+func (l *Logger) Info(msg string, add ...string) {
+	l.Logger.Info(buildMsg(msg, add...))
+}
+
+func buildMsg(msg string, add ...string) (string, zap.Field) {
+	return msg, zap.String("", strings.Join(add, " "))
 }

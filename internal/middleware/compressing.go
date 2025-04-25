@@ -1,4 +1,4 @@
-package handlers
+package middleware
 
 import (
 	"compress/gzip"
@@ -7,7 +7,7 @@ import (
 	"github.com/ASRafalsky/telemetry/internal/compress"
 )
 
-func WithCompress(h http.HandlerFunc) http.HandlerFunc {
+func WithCompress(h http.HandlerFunc, log logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ow := w
 
@@ -16,7 +16,11 @@ func WithCompress(h http.HandlerFunc) http.HandlerFunc {
 		case "gzip":
 			cw := compress.NewCompressWriter(w, gzip.NewWriter(w), compressing)
 			ow = cw
-			defer cw.Close()
+			defer func() {
+				if err := cw.Close(); err != nil {
+					log.Error("failed to close gzip writer", err.Error())
+				}
+			}()
 		default:
 		}
 
@@ -28,9 +32,7 @@ func WithCompress(h http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 			r.Body = compress.NewCompressReader(r.Body, zr)
-			defer r.Body.Close()
 		default:
-
 		}
 		h.ServeHTTP(ow, r)
 	}

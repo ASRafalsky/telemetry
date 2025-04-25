@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ASRafalsky/telemetry/internal/log"
 	"github.com/ASRafalsky/telemetry/internal/storage"
 	"github.com/ASRafalsky/telemetry/internal/types"
+	"github.com/ASRafalsky/telemetry/pkg/log"
 )
 
 func TestGetMetrics(t *testing.T) {
@@ -46,7 +46,6 @@ func TestPoll(t *testing.T) {
 
 	log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
-	defer log.Sync()
 	go Poll(ctx, GetGaugeMetrics, 100*time.Millisecond, repo, log)
 	go Poll(ctx, GetCounterMetrics, 100*time.Millisecond, repo, log)
 
@@ -60,7 +59,7 @@ func TestPoll(t *testing.T) {
 			gaugeFound   bool
 			counterFound bool
 		)
-		repo.ForEach(context.Background(), func(k string, v []byte) error {
+		require.NoError(t, repo.ForEach(context.Background(), func(k string, v []byte) error {
 			if strings.HasPrefix(k, gauge) {
 				gaugeFound = true
 			}
@@ -68,7 +67,7 @@ func TestPoll(t *testing.T) {
 				counterFound = true
 			}
 			return nil
-		})
+		}))
 		return gaugeFound && counterFound
 	},
 		20*time.Millisecond, 5*time.Millisecond)

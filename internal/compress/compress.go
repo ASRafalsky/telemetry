@@ -3,6 +3,8 @@ package compress
 import (
 	"io"
 	"net/http"
+
+	"go.uber.org/multierr"
 )
 
 type CompressWriter struct {
@@ -58,13 +60,14 @@ func NewCompressReader(r io.ReadCloser, cr readerCloser) *CompressReader {
 	}
 }
 
-func (c CompressReader) Read(p []byte) (n int, err error) {
+func (c *CompressReader) Read(p []byte) (int, error) {
 	return c.cr.Read(p)
 }
 
 func (c *CompressReader) Close() error {
-	if err := c.r.Close(); err != nil {
-		return err
+	err := c.r.Close()
+	if errReader := c.cr.Close(); errReader != nil {
+		err = multierr.Append(err, errReader)
 	}
-	return c.cr.Close()
+	return err
 }

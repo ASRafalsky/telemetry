@@ -23,7 +23,10 @@ func JSONPostHandler(repo repository, fn dataHandler) func(http.ResponseWriter, 
 			http.Error(res, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		defer req.Body.Close()
+		defer func() {
+			// Handled at the logging level.
+			_ = req.Body.Close()
+		}()
 		metricList, err := transport.DeserializeMetrics(buf)
 		if err != nil {
 			http.Error(res, err.Error(), http.StatusInternalServerError)
@@ -211,4 +214,12 @@ type repository interface {
 	ForEach(ctx context.Context, fn func(k string, v []byte) error) error
 	Size() int
 	Delete(k string)
+}
+
+type logger interface {
+	Info(msg ...string)
+	Warn(msg ...string)
+	Error(msg ...string)
+	Debug(msg ...string)
+	Fatal(msg ...string)
 }

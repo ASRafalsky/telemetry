@@ -123,13 +123,13 @@ func TestSend(t *testing.T) {
 	repo.Set(counter+"_var3", types.CounterToBytes(counterData))
 	repo.Set(counter+"_var4", types.CounterToBytes(counterData))
 
-	sendGaugeData(context.Background(), srv.URL, repo, client)
+	require.NoError(t, sendGaugeData(context.Background(), srv.URL, repo, client))
 	require.Eventually(t,
 		func() bool {
 			return gFound
 		},
 		200*time.Millisecond, 50*time.Millisecond)
-	sendCounterData(context.Background(), srv.URL, repo, client)
+	require.NoError(t, sendCounterData(context.Background(), srv.URL, repo, client))
 	require.Eventually(t,
 		func() bool {
 			return cFound

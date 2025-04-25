@@ -12,11 +12,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ASRafalsky/telemetry/internal/log"
+	"github.com/ASRafalsky/telemetry/internal/poller"
+	"github.com/ASRafalsky/telemetry/internal/reporter"
 	"github.com/ASRafalsky/telemetry/internal/storage"
 	"github.com/ASRafalsky/telemetry/internal/transport"
-	"github.com/ASRafalsky/telemetry/pkg/services/poller"
-	"github.com/ASRafalsky/telemetry/pkg/services/reporter"
+	"github.com/ASRafalsky/telemetry/pkg/log"
 )
 
 func TestAgent(t *testing.T) {

@@ -15,7 +15,7 @@ import (
 	"github.com/ASRafalsky/telemetry/internal/transport"
 )
 
-func DumpRepoToFile(path string, repo repository, mode os.FileMode) (err error) {
+func DumpRepoToFile(path string, repo dataDumper, mode os.FileMode) (err error) {
 	if err = os.MkdirAll(filepath.Dir(path), addXPerm(mode)); err != nil {
 		return err
 	}
@@ -42,7 +42,7 @@ func DumpRepoToFile(path string, repo repository, mode os.FileMode) (err error) 
 	return dump(zw, repo)
 }
 
-func dump(w writer, repo repository) error {
+func dump(w writer, repo dataDumper) error {
 	if repo.Size() == 0 {
 		return errors.New("repository is empty")
 	}
@@ -56,7 +56,7 @@ func dump(w writer, repo repository) error {
 	return nil
 }
 
-func RestoreRepoFromFile(path string, repo repository, remove bool) (err error) {
+func RestoreRepoFromFile(path string, repo dataRestorer, remove bool) (err error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
@@ -87,7 +87,7 @@ func RestoreRepoFromFile(path string, repo repository, remove bool) (err error) 
 	return err
 }
 
-func restore(r reader, repo repository) error {
+func restore(r reader, repo dataRestorer) error {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		buf := slices.Clone(scanner.Bytes())
@@ -114,14 +114,6 @@ func addXPerm(mode os.FileMode) os.FileMode {
 	}
 
 	return mode.Perm()
-}
-
-type repository interface {
-	Set(k string, v []byte)
-	Get(k string) ([]byte, bool)
-	ForEach(ctx context.Context, fn func(k string, v []byte) error) error
-	Size() int
-	Delete(k string)
 }
 
 type writer interface {

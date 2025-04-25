@@ -76,11 +76,11 @@ func GetGaugeMetrics(repo repository) {
 }
 
 type logger interface {
-	Info(msg ...string)
-	Warn(msg ...string)
-	Error(msg ...string)
-	Debug(msg ...string)
-	Fatal(msg ...string)
+	Info(msg string, add ...string)
+	Warn(msg string, add ...string)
+	Error(msg string, add ...string)
+	Debug(msg string, add ...string)
+	Fatal(msg string, add ...string)
 }
 
 type repository interface {

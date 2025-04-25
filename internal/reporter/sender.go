@@ -40,18 +40,17 @@ func Send(ctx context.Context, addr, mType string, interval time.Duration, clien
 	}
 }
 
-func sendJSONData(ctx context.Context, addr, mtype string, repo repository, client *httpclient.Client) error {
+func sendJSONData(ctx context.Context, addr, mtype string, repo repository, client *httpclient.Client) (err error) {
 	header := http.Header{
 		"Content-Type": []string{"application/json"},
 	}
-	var (
-		bufToSend = bytes.NewBuffer(nil)
-		errRes    error
-	)
+	var bufToSend = bytes.NewBuffer(nil)
 
 	zw := gzip.NewWriter(bufToSend)
-	err := serializeMetrics(ctx, mtype, repo, zw)
-	zw.Close()
+	err = serializeMetrics(ctx, mtype, repo, zw)
+	if errZw := zw.Close(); errZw != nil {
+		err = multierr.Append(err, fmt.Errorf("failed to close gzip writer: %w", errZw))
+	}
 	if bufToSend.Len() == 0 {
 		if err != nil {
 			return err
@@ -59,24 +58,29 @@ func sendJSONData(ctx context.Context, addr, mtype string, repo repository, clie
 		return nil
 	}
 	header.Set("Content-Encoding", "gzip")
-	resp, err := client.Post(addr+"/update/", bufToSend, header)
-	if err != nil {
+	resp, errPost := client.Post(addr+"/update/", bufToSend, header)
+	if errPost != nil {
+		err = multierr.Append(err, fmt.Errorf("failed to post update: %w", errPost))
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if errClose := resp.Body.Close(); errClose != nil {
+			err = multierr.Append(err, fmt.Errorf("failed to close response body: %w", errClose))
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
-		errRes = multierr.Append(errRes, fmt.Errorf("bad status for %s: %s", mtype, resp.Status))
+		err = multierr.Append(err, fmt.Errorf("bad status for %s: %s", mtype, resp.Status))
 	}
-	return errRes
+	return err
 }
 
-func sendCounterData(ctx context.Context, addr string, repo repository, client *httpclient.Client) {
+func sendCounterData(ctx context.Context, addr string, repo repository, client *httpclient.Client) error {
 	header := http.Header{
 		"Content-Type": []string{"text/plain"},
 	}
 	var errRes error
-	err := repo.ForEach(ctx, func(k string, v []byte) error {
+	return repo.ForEach(ctx, func(k string, v []byte) error {
 		if !strings.HasPrefix(k, counter) {
 			return nil
 		}
@@ -87,22 +91,22 @@ func sendCounterData(ctx context.Context, addr string, repo repository, client *
 			return nil
 		}
 		if resp.StatusCode != http.StatusOK {
-			fmt.Printf("[send/counter] Status code: %s\n", resp.Status)
+			errRes = multierr.Append(errRes, fmt.Errorf("bad response status for %s; %s", k, resp.Status))
 		}
-		return resp.Body.Close()
+		if errClose := resp.Body.Close(); errClose != nil {
+			errRes = multierr.Append(errRes, fmt.Errorf("failed to close response body for %s; %w", k, err))
+		}
+		return errRes
 	})
-	if errRes = multierr.Append(errRes, err); err != nil {
-		fmt.Printf("[send/counter] Failed to send data; %s\n", err)
-	}
 }
 
-func sendGaugeData(ctx context.Context, addr string, repo repository, client *httpclient.Client) {
+func sendGaugeData(ctx context.Context, addr string, repo repository, client *httpclient.Client) error {
 	header := http.Header{
 		"Content-Type": []string{"text/plain"},
 	}
 
 	var errRes error
-	err := repo.ForEach(ctx, func(k string, v []byte) error {
+	return repo.ForEach(ctx, func(k string, v []byte) error {
 		if !strings.HasPrefix(k, gauge) {
 			return nil
 		}
@@ -113,13 +117,13 @@ func sendGaugeData(ctx context.Context, addr string, repo repository, client *ht
 			return nil
 		}
 		if resp.StatusCode != http.StatusOK {
-			fmt.Printf("[send/counter] Status code: %s\n", resp.Status)
+			errRes = multierr.Append(errRes, fmt.Errorf("bad response status for %s; %s", k, resp.Status))
 		}
-		return resp.Body.Close()
+		if errClose := resp.Body.Close(); errClose != nil {
+			errRes = multierr.Append(errRes, fmt.Errorf("failed to close response body for %s; %w", k, err))
+		}
+		return errRes
 	})
-	if errRes = multierr.Append(errRes, err); err != nil {
-		fmt.Printf("[send/counter] Failed to send data; %s\n", err)
-	}
 }
 
 func serializeMetrics(ctx context.Context, mtype string, repo repository, wc writerCloser) error {
@@ -178,11 +182,11 @@ func dataToMetrics(mtype, name string, d []byte) (transport.Metrics, error) {
 }
 
 type logger interface {
-	Info(msg ...string)
-	Warn(msg ...string)
-	Error(msg ...string)
-	Debug(msg ...string)
-	Fatal(msg ...string)
+	Info(msg string, add ...string)
+	Warn(msg string, add ...string)
+	Error(msg string, add ...string)
+	Debug(msg string, add ...string)
+	Fatal(msg string, add ...string)
 }
 
 type repository interface {

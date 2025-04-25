@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/ASRafalsky/telemetry/internal/repository"
 	"github.com/ASRafalsky/telemetry/internal/storage"
 	"github.com/ASRafalsky/telemetry/internal/transport"
 )
@@ -21,7 +22,7 @@ const (
 func TestBackup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "/test/backup")
 
-	repo := storage.New[string, []byte]()
+	repo := repository.NewExtendedRepository(storage.New[string, []byte]())
 
 	for i := range 100 {
 		idx := strconv.Itoa(i)
