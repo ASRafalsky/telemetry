@@ -2,25 +2,43 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"time"
 
-	"github.com/ASRafalsky/telemetry/pkg/services/poller"
-	"github.com/ASRafalsky/telemetry/pkg/services/reporter"
-	"github.com/ASRafalsky/telemetry/pkg/services/repository"
+	"github.com/ASRafalsky/telemetry/internal/poller"
+	"github.com/ASRafalsky/telemetry/internal/reporter"
+	"github.com/ASRafalsky/telemetry/internal/storage"
+	"github.com/ASRafalsky/telemetry/pkg/log"
+)
+
+const (
+	gauge   = "gauge"
+	counter = "counter"
 )
 
 func main() {
-	addr, pollingPeriod, sendPeriod := parseFlags()
+	cfg, err := updateCfg()
+	if err != nil {
+		panic(err)
+	}
 
-	client := NewClient()
+	logger, err := log.AddLoggerWith("info", "")
+	if err != nil {
+		panic(err)
+	}
+
+	defer logger.Sync()
+
+	client := newClient()
 	ctx := context.Background()
 
-	repos := repository.NewRepositories()
+	repo := storage.New[string, []byte]()
 
-	fmt.Printf("Agent started with address: %s\n", "http://"+addr)
-	go poller.Poll(ctx, time.Duration(pollingPeriod)*time.Second, repos)
-	go reporter.Send(ctx, "http://"+addr, time.Duration(sendPeriod)*time.Second, client, repos)
+	logger.Info("Agent started with address:", "http://"+cfg.Addr)
+
+	go poller.Poll(ctx, poller.GetGaugeMetrics, time.Duration(cfg.PollingPeriod)*time.Second, repo, logger)
+	go poller.Poll(ctx, poller.GetCounterMetrics, time.Duration(cfg.ReportPeriod)*time.Second, repo, logger)
+
+	go reporter.Send(ctx, "http://"+cfg.Addr, "", time.Duration(cfg.ReportPeriod)*time.Second, client, repo, logger)
 
 	<-ctx.Done()
 }

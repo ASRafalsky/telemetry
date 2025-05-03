@@ -1,7 +1,9 @@
 package main
 
 import (
+	"compress/gzip"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,14 +12,16 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ASRafalsky/telemetry/pkg/services/poller"
-	"github.com/ASRafalsky/telemetry/pkg/services/reporter"
-	"github.com/ASRafalsky/telemetry/pkg/services/repository"
+	"github.com/ASRafalsky/telemetry/internal/poller"
+	"github.com/ASRafalsky/telemetry/internal/reporter"
+	"github.com/ASRafalsky/telemetry/internal/storage"
+	"github.com/ASRafalsky/telemetry/internal/transport"
+	"github.com/ASRafalsky/telemetry/pkg/log"
 )
 
 func TestAgent(t *testing.T) {
 	var (
-		gFound, cFound bool
+		gFound, cFound, cJSONFound, gJSONFound bool
 	)
 
 	// Add handlers and router.
@@ -37,10 +41,49 @@ func TestAgent(t *testing.T) {
 			}
 		}
 	}
+	jsonHandler := func() http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, r.Header.Get("Content-Type"), "application/json")
+
+			var (
+				buf []byte
+				err error
+			)
+			switch r.Header.Get("Content-Encoding") {
+			case "gzip":
+				zr, err := gzip.NewReader(r.Body)
+				require.NoError(t, err)
+				buf, err = io.ReadAll(zr)
+				require.NoError(t, err)
+			default:
+				buf, err = io.ReadAll(r.Body)
+				require.NoError(t, err)
+			}
+			defer require.NoError(t, r.Body.Close())
+			metricList, err := transport.DeserializeMetrics(buf)
+			require.NoError(t, err)
+			require.NotEmpty(t, metricList)
+
+			for _, m := range metricList {
+				switch m.MType {
+				case counter:
+					require.NotNil(t, m.Delta)
+					require.Nil(t, m.Value)
+					cJSONFound = true
+				case gauge:
+					require.NotNil(t, m.Value)
+					require.Nil(t, m.Delta)
+					gJSONFound = true
+				default:
+				}
+			}
+		}
+	}
 
 	r := chi.NewRouter()
 	r.Route("/", func(r chi.Router) {
 		r.Route("/update", func(r chi.Router) {
+			r.Post("/", jsonHandler())
 			r.Post("/gauge/{name}/{value}", gaugeHandler())
 			r.Post("/counter/{name}/{value}", counterHandler())
 			r.Post("/{type}/{name}/{value}", func(w http.ResponseWriter, r *http.Request) {
@@ -56,16 +99,25 @@ func TestAgent(t *testing.T) {
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
-	t.Log(srv.URL)
-
-	client := NewClient()
+	client := newClient()
 	ctx, cancel := context.WithCancel(context.Background())
 
-	repos := repository.NewRepositories()
+	gaugeRepo := storage.New[string, []byte]()
+	counterRepo := storage.New[string, []byte]()
 
-	go poller.Poll(ctx, 20*time.Millisecond, repos)
-	go reporter.Send(ctx, srv.URL, 100*time.Millisecond, client, repos)
+	logeer, err := log.AddLoggerWith("info", "")
+	require.NoError(t, err)
 
-	require.Eventually(t, func() bool { return gFound && cFound }, 200*time.Millisecond, 50*time.Millisecond)
+	go poller.Poll(ctx, poller.GetGaugeMetrics, 20*time.Millisecond, gaugeRepo, logeer)
+	go poller.Poll(ctx, poller.GetCounterMetrics, 20*time.Millisecond, counterRepo, logeer)
+
+	go reporter.Send(ctx, srv.URL, gauge, 100*time.Millisecond, client, gaugeRepo, logeer)
+	go reporter.Send(ctx, srv.URL, counter, 100*time.Millisecond, client, counterRepo, logeer)
+
+	require.Eventually(t,
+		func() bool {
+			return !gFound && !cFound && gJSONFound && cJSONFound
+		},
+		200*time.Millisecond, 50*time.Millisecond)
 	cancel()
 }
