@@ -9,7 +9,7 @@ import (
 )
 
 func TestUpdateCfg_Default(t *testing.T) {
-	defAgentCfg := config.AgentConfig{
+	defAgentCfg := config.Agent{
 		CommonFields: config.CommonFields{
 			Addr:     config.DefaultAddr,
 			LogLevel: config.DefaultLogLevel,

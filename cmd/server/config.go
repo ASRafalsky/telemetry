@@ -9,8 +9,8 @@ import (
 	"github.com/ASRafalsky/telemetry/internal/config"
 )
 
-func updateCfg() (config.ServerConfig, error) {
-	cfg := config.ServerConfig{}
+func updateCfg() (config.Server, error) {
+	cfg := config.Server{}
 	err := env.Parse(&cfg)
 
 	if envRestore := os.Getenv("RESTORE"); envRestore == "" {
@@ -30,6 +30,9 @@ func updateCfg() (config.ServerConfig, error) {
 	}
 	if cfg.StorePeriod == config.DefaultDumpInterval {
 		flag.IntVar(&cfg.StorePeriod, "i", config.DefaultDumpInterval, "dump interval in seconds")
+	}
+	if cfg.DB.DSN == config.DefaultDBAddr {
+		flag.StringVar(&cfg.DB.DSN, "d", config.DefaultDBAddr, "database address")
 	}
 
 	flag.Parse()

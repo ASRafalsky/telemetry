@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 
 	"github.com/ASRafalsky/telemetry/internal/backup"
+	"github.com/ASRafalsky/telemetry/internal/db/postgres"
 	"github.com/ASRafalsky/telemetry/internal/handlers"
 	"github.com/ASRafalsky/telemetry/internal/middleware"
 	"github.com/ASRafalsky/telemetry/internal/repository"
@@ -28,7 +30,18 @@ func main() {
 	}
 	defer Log.Sync()
 
-	repo := repository.NewExtendedRepository(storage.New[string, []byte]())
+	Log.Info("Open db with dsn", "dsn", cfg.DB.DSN)
+	db, err := postgres.Open(cfg.DB.DSN)
+	if err != nil {
+		Log.Error("failed to connect to database: ", err.Error())
+	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			Log.Error("Failed to close db:", err.Error())
+		}
+	}()
+
+	repo := repository.NewExtendedRepository(storage.New[string, []byte](), db)
 
 	if cfg.Restore {
 		if err = backup.RestoreRepo(cfg.DumpPath, repo); err != nil {
@@ -37,14 +50,20 @@ func main() {
 	}
 
 	ctx := context.Background()
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(time.Second))
+	defer cancel()
+	if err := db.Ping(ctx); err != nil {
+		Log.Error("Failed to ping db:", err.Error())
+	}
+
 	go backup.BackupRepo(ctx, repo, cfg.StorePeriod, cfg.DumpPath, *Log)
 
 	Log.Fatal("Failed to start server:" +
 		zap.String("err:",
-			http.ListenAndServe(cfg.Addr, middleware.WithLogging(newRouter(repo, Log), Log)).Error()).String)
+			http.ListenAndServe(cfg.Addr, middleware.WithLogging(newRouter(ctx, repo, Log), Log)).Error()).String)
 }
 
-func newRouter(repo dataRepository, logger *log.Logger) http.Handler {
+func newRouter(ctx context.Context, repo dataRepository, logger *log.Logger) http.Handler {
 	r := chi.NewRouter()
 	r.Route("/", func(r chi.Router) {
 		r.Route("/update", func(r chi.Router) {
@@ -59,6 +78,9 @@ func newRouter(repo dataRepository, logger *log.Logger) http.Handler {
 			r.Get("/counter/{name}", handlers.CounterGetHandler(repo))
 			r.Get("/{type}/{name}", handlers.FailureGetHandler())
 		})
+		r.Route("/ping", func(r chi.Router) {
+			r.Get("/", handlers.DBPingHandler(ctx, repo))
+		})
 		r.Post("/", handlers.FailurePostHandler())
 		r.Get("/", middleware.WithCompress(handlers.AllGetHandler(templates.PrepareTemplate(), repo), logger))
 	})
@@ -71,4 +93,5 @@ type dataRepository interface {
 	ForEach(ctx context.Context, fn func(k string, v []byte) error) error
 	Size() int
 	Delete(k string)
+	Ping(ctx context.Context) error
 }

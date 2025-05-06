@@ -8,8 +8,8 @@ import (
 	"github.com/ASRafalsky/telemetry/internal/config"
 )
 
-func updateCfg() (config.AgentConfig, error) {
-	cfg := config.AgentConfig{}
+func updateCfg() (config.Agent, error) {
+	cfg := config.Agent{}
 	err := env.Parse(&cfg)
 
 	if cfg.Addr == config.DefaultAddr {

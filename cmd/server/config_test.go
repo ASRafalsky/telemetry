@@ -9,11 +9,14 @@ import (
 )
 
 func TestUpdateCfg_Default(t *testing.T) {
-	defSrvCfg := config.ServerConfig{
+	defSrvCfg := config.Server{
 		CommonFields: config.CommonFields{
 			Addr:     config.DefaultAddr,
 			LogLevel: config.DefaultLogLevel,
 			LogPath:  "",
+		},
+		DB: config.DB{
+			DSN: config.DefaultDBAddr,
 		},
 		DumpPath:    config.DefaultDumpPath,
 		StorePeriod: config.DefaultDumpInterval,

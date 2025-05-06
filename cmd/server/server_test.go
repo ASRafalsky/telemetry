@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -25,8 +26,8 @@ import (
 func TestServerStatuses(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
-	repo := repository.NewExtendedRepository(storage.New[string, []byte]())
-	srv := httptest.NewServer(middleware.WithLogging(newRouter(repo, Log), Log))
+	repo := repository.NewExtendedRepository(storage.New[string, []byte](), nil)
+	srv := httptest.NewServer(middleware.WithLogging(newRouter(context.Background(), repo, Log), Log))
 	defer srv.Close()
 
 	header := http.Header{
@@ -194,8 +195,8 @@ func TestServerStatuses(t *testing.T) {
 func Test_JSON(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
-	repo := repository.NewExtendedRepository(storage.New[string, []byte]())
-	srv := httptest.NewServer(middleware.WithLogging(newRouter(repo, Log), Log))
+	repo := repository.NewExtendedRepository(storage.New[string, []byte](), nil)
+	srv := httptest.NewServer(middleware.WithLogging(newRouter(context.Background(), repo, Log), Log))
 	defer srv.Close()
 
 	// Create a new HTTP client with a default timeout
@@ -478,8 +479,8 @@ func Test_JSON(t *testing.T) {
 func Test_JSON_encoding(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
-	repo := repository.NewExtendedRepository(storage.New[string, []byte]())
-	srv := httptest.NewServer(middleware.WithLogging(newRouter(repo, Log), Log))
+	repo := repository.NewExtendedRepository(storage.New[string, []byte](), nil)
+	srv := httptest.NewServer(middleware.WithLogging(newRouter(context.Background(), repo, Log), Log))
 	defer srv.Close()
 
 	// Create a new HTTP client with a default timeout
@@ -776,8 +777,8 @@ func Test_JSON_encoding(t *testing.T) {
 func Test_POST_GET(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
-	repo := repository.NewExtendedRepository(storage.New[string, []byte]())
-	srv := httptest.NewServer(middleware.WithLogging(newRouter(repo, Log), Log))
+	repo := repository.NewExtendedRepository(storage.New[string, []byte](), nil)
+	srv := httptest.NewServer(middleware.WithLogging(newRouter(context.Background(), repo, Log), Log))
 	defer srv.Close()
 	// Create a new HTTP client with a default timeout
 	timeout := 1000 * time.Millisecond

@@ -2,10 +2,12 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"html/template"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/mailru/easyjson"
@@ -187,6 +189,19 @@ func FailureGetHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
+func DBPingHandler(ctx context.Context, repo repository) func(http.ResponseWriter, *http.Request) {
+	return func(res http.ResponseWriter, req *http.Request) {
+		ctxPing, cancel := context.WithDeadline(ctx, time.Now().Add(time.Second*10))
+		defer cancel()
+		if err := repo.Ping(ctxPing); err != nil {
+			fmt.Println("Ping with", err.Error())
+			res.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		res.WriteHeader(http.StatusOK)
+	}
+}
+
 func AllGetHandler(tmpl *template.Template, repo repository) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		if repo.Size() == 0 {
@@ -214,6 +229,7 @@ type repository interface {
 	ForEach(ctx context.Context, fn func(k string, v []byte) error) error
 	Size() int
 	Delete(k string)
+	Ping(ctx context.Context) error
 }
 
 type logger interface {

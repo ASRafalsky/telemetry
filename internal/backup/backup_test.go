@@ -22,7 +22,7 @@ const (
 func TestBackup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "/test/backup")
 
-	repo := repository.NewExtendedRepository(storage.New[string, []byte]())
+	repo := repository.NewExtendedRepository(storage.New[string, []byte](), nil)
 
 	for i := range 100 {
 		idx := strconv.Itoa(i)
