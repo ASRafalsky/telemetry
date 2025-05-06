@@ -3,8 +3,6 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"fmt"
-	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -22,8 +20,5 @@ func (db DB) Close() error {
 }
 
 func (db DB) Ping(ctx context.Context) error {
-	ts := time.Now()
-	fmt.Println("ololo", ts)
-	defer fmt.Println("ololo", time.Since(ts))
 	return db.DB.PingContext(ctx)
 }

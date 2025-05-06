@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -50,10 +51,14 @@ func main() {
 	}
 
 	ctx := context.Background()
-	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(time.Second))
-	defer cancel()
-	if err := db.Ping(ctx); err != nil {
-		Log.Error("Failed to ping db:", err.Error())
+	for i := range 5 {
+		ctxPing, cancel := context.WithTimeout(ctx, time.Second)
+		err = db.Ping(ctxPing)
+		if err != nil {
+			Log.Error("Failed to ping db:", strconv.Itoa(i), err.Error())
+		}
+		cancel()
+		time.Sleep(time.Second)
 	}
 
 	go backup.BackupRepo(ctx, repo, cfg.StorePeriod, cfg.DumpPath, *Log)
