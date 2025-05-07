@@ -189,9 +189,9 @@ func FailureGetHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-func DBPingHandler(ctx context.Context, repo repository) func(http.ResponseWriter, *http.Request) {
+func DBPingHandler(repo repository) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
-		ctxPing, cancel := context.WithTimeout(ctx, time.Second)
+		ctxPing, cancel := context.WithTimeout(req.Context(), time.Second)
 		defer cancel()
 		if err := repo.Ping(ctxPing); err != nil {
 			fmt.Println("Ping with", err.Error())

@@ -65,10 +65,10 @@ func main() {
 
 	Log.Fatal("Failed to start server:" +
 		zap.String("err:",
-			http.ListenAndServe(cfg.Addr, middleware.WithLogging(newRouter(ctx, repo, Log), Log)).Error()).String)
+			http.ListenAndServe(cfg.Addr, middleware.WithLogging(newRouter(repo, Log), Log)).Error()).String)
 }
 
-func newRouter(ctx context.Context, repo dataRepository, logger *log.Logger) http.Handler {
+func newRouter(repo dataRepository, logger *log.Logger) http.Handler {
 	r := chi.NewRouter()
 	r.Route("/", func(r chi.Router) {
 		r.Route("/update", func(r chi.Router) {
@@ -84,7 +84,7 @@ func newRouter(ctx context.Context, repo dataRepository, logger *log.Logger) htt
 			r.Get("/{type}/{name}", handlers.FailureGetHandler())
 		})
 		r.Route("/ping", func(r chi.Router) {
-			r.Get("/", handlers.DBPingHandler(ctx, repo))
+			r.Get("/", handlers.DBPingHandler(repo))
 		})
 		r.Post("/", handlers.FailurePostHandler())
 		r.Get("/", middleware.WithCompress(handlers.AllGetHandler(templates.PrepareTemplate(), repo), logger))
