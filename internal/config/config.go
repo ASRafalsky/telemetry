@@ -2,7 +2,7 @@ package config
 
 const (
 	DefaultAddr           = ":8080"
-	DefaultDBAddr         = "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
+	DefaultDBAddr         = ""
 	DefaultLogLevel       = "info"
 	DefaultDumpPath       = "./dump/dump"
 	DefaultDumpInterval   = 300
@@ -17,7 +17,7 @@ type CommonFields struct {
 }
 
 type DB struct {
-	DSN string `env:"DATABASE_DSN" envDefault:"postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"`
+	DSN string `env:"DATABASE_DSN" envDefault:""`
 }
 
 type Server struct {

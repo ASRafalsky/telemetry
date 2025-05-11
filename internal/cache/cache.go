@@ -1,11 +1,11 @@
-package storage
+package cache
 
 import (
 	"context"
 	"sync"
 )
 
-// MemStorage non-blocking kv storage.
+// MemStorage kv cache.
 type MemStorage[K comparable, V any] struct {
 	mx      sync.RWMutex
 	storage map[K]V
@@ -62,6 +62,26 @@ func (m *MemStorage[K, V]) ForEach(ctx context.Context, fn func(k K, v V) error)
 		}
 		if err := fn(k, v); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// DropFn drops entry if fn returns true without error.
+func (m *MemStorage[K, V]) DropFn(ctx context.Context, fn func(k K, v V) (bool, error)) error {
+	m.mx.Lock()
+	defer m.mx.Unlock()
+
+	for k, v := range m.storage {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		drop, err := fn(k, v)
+		if err != nil {
+			return err
+		}
+		if drop {
+			delete(m.storage, k)
 		}
 	}
 	return nil

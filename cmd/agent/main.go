@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/ASRafalsky/telemetry/internal/cache"
 	"github.com/ASRafalsky/telemetry/internal/poller"
 	"github.com/ASRafalsky/telemetry/internal/reporter"
-	"github.com/ASRafalsky/telemetry/internal/storage"
 	"github.com/ASRafalsky/telemetry/pkg/log"
 )
 
@@ -31,7 +31,7 @@ func main() {
 	client := newClient()
 	ctx := context.Background()
 
-	repo := storage.New[string, []byte]()
+	repo := cache.New[string, []byte]()
 
 	logger.Info("Agent started with address:", "http://"+cfg.Addr)
 

@@ -13,7 +13,7 @@ import (
 	"github.com/gojek/heimdall/v7/httpclient"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ASRafalsky/telemetry/internal/storage"
+	"github.com/ASRafalsky/telemetry/internal/cache"
 	"github.com/ASRafalsky/telemetry/internal/transport"
 	"github.com/ASRafalsky/telemetry/internal/types"
 )
@@ -92,12 +92,17 @@ func TestSend(t *testing.T) {
 	}
 
 	r := chi.NewRouter()
-	r.Route("/update", func(r chi.Router) {
-		r.Post("/", jsonHandler())
-		r.Post("/gauge/{name}/{value}", gaugeHandler())
-		r.Post("/counter/{name}/{value}", counterHandler())
-		r.Post("/{type}/{name}/{value}", func(w http.ResponseWriter, r *http.Request) {
-			panic("wrong request")
+	r.Route("/", func(r chi.Router) {
+		r.Route("/update", func(r chi.Router) {
+			r.Post("/", jsonHandler())
+			r.Post("/gauge/{name}/{value}", gaugeHandler())
+			r.Post("/counter/{name}/{value}", counterHandler())
+			r.Post("/{type}/{name}/{value}", func(w http.ResponseWriter, r *http.Request) {
+				panic("wrong request")
+			})
+		})
+		r.Route("/updates", func(r chi.Router) {
+			r.Post("/", jsonHandler())
 		})
 	})
 
@@ -110,7 +115,7 @@ func TestSend(t *testing.T) {
 	client := httpclient.NewClient(httpclient.WithHTTPTimeout(timeout))
 
 	// Init repository.
-	repo := storage.New[string, []byte]()
+	repo := cache.New[string, []byte]()
 
 	// Prepare data and set to repos.
 	gaugeData, err := types.ParseGauge(testValStr)
@@ -142,6 +147,9 @@ func TestSend(t *testing.T) {
 			return cJSONFound
 		},
 		200*time.Millisecond, 50*time.Millisecond)
+
+	repo.Set(gauge+"_var1", types.GaugeToBytes(gaugeData))
+	repo.Set(gauge+"_var2", types.GaugeToBytes(gaugeData))
 	require.NoError(t,
 		sendJSONData(context.Background(), srv.URL, gauge, repo, client))
 	require.Eventually(t,
@@ -152,12 +160,13 @@ func TestSend(t *testing.T) {
 
 	cJSONFound, gJSONFound = false, false
 
+	// After sending gauge entries have been dropped.
 	require.NoError(t,
 		sendJSONData(context.Background(), srv.URL, "", repo, client))
 
 	require.Eventually(t,
 		func() bool {
-			return gJSONFound && cJSONFound
+			return !gJSONFound && cJSONFound
 		},
 		200*time.Millisecond, 50*time.Millisecond)
 }

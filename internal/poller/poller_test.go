@@ -9,13 +9,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ASRafalsky/telemetry/internal/storage"
+	"github.com/ASRafalsky/telemetry/internal/cache"
 	"github.com/ASRafalsky/telemetry/internal/types"
 	"github.com/ASRafalsky/telemetry/pkg/log"
 )
 
 func TestGetMetrics(t *testing.T) {
-	repo := storage.New[string, []byte]()
+	repo := cache.New[string, []byte]()
 
 	t.Run("getCounterMetrics", func(t *testing.T) {
 		for i := range 10 {
@@ -41,7 +41,7 @@ func TestGetMetrics(t *testing.T) {
 }
 
 func TestPoll(t *testing.T) {
-	repo := storage.New[string, []byte]()
+	repo := cache.New[string, []byte]()
 	ctx, cancel := context.WithCancel(context.Background())
 
 	log, err := log.AddLoggerWith("info", "")

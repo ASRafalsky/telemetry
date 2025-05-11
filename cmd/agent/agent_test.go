@@ -12,9 +12,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ASRafalsky/telemetry/internal/cache"
 	"github.com/ASRafalsky/telemetry/internal/poller"
 	"github.com/ASRafalsky/telemetry/internal/reporter"
-	"github.com/ASRafalsky/telemetry/internal/storage"
 	"github.com/ASRafalsky/telemetry/internal/transport"
 	"github.com/ASRafalsky/telemetry/pkg/log"
 )
@@ -90,6 +90,9 @@ func TestAgent(t *testing.T) {
 				panic("wrong request")
 			})
 		})
+		r.Route("/updates", func(r chi.Router) {
+			r.Post("/", jsonHandler())
+		})
 		r.Post("/", func(w http.ResponseWriter, r *http.Request) {
 			panic("wrong request")
 		})
@@ -102,8 +105,8 @@ func TestAgent(t *testing.T) {
 	client := newClient()
 	ctx, cancel := context.WithCancel(context.Background())
 
-	gaugeRepo := storage.New[string, []byte]()
-	counterRepo := storage.New[string, []byte]()
+	gaugeRepo := cache.New[string, []byte]()
+	counterRepo := cache.New[string, []byte]()
 
 	logeer, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)

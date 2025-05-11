@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ASRafalsky/telemetry/internal/cache"
 	"github.com/ASRafalsky/telemetry/internal/middleware"
 	"github.com/ASRafalsky/telemetry/internal/repository"
-	"github.com/ASRafalsky/telemetry/internal/storage"
 	"github.com/ASRafalsky/telemetry/internal/transport"
 	"github.com/ASRafalsky/telemetry/pkg/log"
 )
@@ -25,7 +25,7 @@ import (
 func TestServerStatuses(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
-	repo := repository.NewExtendedRepository(storage.New[string, []byte](), nil)
+	repo := repository.NewExtendedRepository(cache.New[string, []byte]())
 	srv := httptest.NewServer(middleware.WithLogging(newRouter(repo, Log), Log))
 	defer srv.Close()
 
@@ -77,13 +77,13 @@ func TestServerStatuses(t *testing.T) {
 			name:          "wrong_req",
 			url:           srv.URL + "/update/",
 			header:        header,
-			expStatusCode: http.StatusInternalServerError,
+			expStatusCode: http.StatusNotFound,
 		},
 		{
 			name:          "wrong_req",
 			url:           srv.URL + "/value/",
 			header:        header,
-			expStatusCode: http.StatusInternalServerError,
+			expStatusCode: http.StatusNotFound,
 		},
 		{
 			name:          "wrong_url_again",
@@ -194,7 +194,7 @@ func TestServerStatuses(t *testing.T) {
 func Test_JSON(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
-	repo := repository.NewExtendedRepository(storage.New[string, []byte](), nil)
+	repo := repository.NewExtendedRepository(cache.New[string, []byte]())
 	srv := httptest.NewServer(middleware.WithLogging(newRouter(repo, Log), Log))
 	defer srv.Close()
 
@@ -478,7 +478,7 @@ func Test_JSON(t *testing.T) {
 func Test_JSON_encoding(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
-	repo := repository.NewExtendedRepository(storage.New[string, []byte](), nil)
+	repo := repository.NewExtendedRepository(cache.New[string, []byte]())
 	srv := httptest.NewServer(middleware.WithLogging(newRouter(repo, Log), Log))
 	defer srv.Close()
 
@@ -561,6 +561,66 @@ func Test_JSON_encoding(t *testing.T) {
 			expResponse: transport.Metrics{
 				MType: "counter",
 				ID:    "c_value0",
+				Delta: &updatedCounterVal,
+			},
+		},
+		{
+			name: "correct_gauge_update_1",
+			url:  srv.URL + "/updates/",
+			data: transport.Metrics{
+				MType: "gauge",
+				ID:    "g_value01",
+				Value: &gaugeVal,
+			},
+			expStatusCode: http.StatusOK,
+			expResponse: transport.Metrics{
+				MType: "gauge",
+				ID:    "g_value01",
+				Value: &gaugeVal,
+			},
+		},
+		{
+			name: "correct_gauge_update_2",
+			url:  srv.URL + "/updates/",
+			data: transport.Metrics{
+				MType: "gauge",
+				ID:    "g_value11",
+				Value: &gaugeVal,
+			},
+			expStatusCode: http.StatusOK,
+			expResponse: transport.Metrics{
+				MType: "gauge",
+				ID:    "g_value11",
+				Value: &gaugeVal,
+			},
+		},
+		{
+			name: "correct_counter_update_1",
+			url:  srv.URL + "/updates/",
+			data: transport.Metrics{
+				MType: "counter",
+				ID:    "c_value01",
+				Delta: &counterVal,
+			},
+			expStatusCode: http.StatusOK,
+			expResponse: transport.Metrics{
+				MType: "counter",
+				ID:    "c_value01",
+				Delta: &counterVal,
+			},
+		},
+		{
+			name: "correct_counter_update_2",
+			url:  srv.URL + "/updates/",
+			data: transport.Metrics{
+				MType: "counter",
+				ID:    "c_value01",
+				Delta: &counterVal,
+			},
+			expStatusCode: http.StatusOK,
+			expResponse: transport.Metrics{
+				MType: "counter",
+				ID:    "c_value01",
 				Delta: &updatedCounterVal,
 			},
 		},
@@ -776,7 +836,7 @@ func Test_JSON_encoding(t *testing.T) {
 func Test_POST_GET(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
-	repo := repository.NewExtendedRepository(storage.New[string, []byte](), nil)
+	repo := repository.NewExtendedRepository(cache.New[string, []byte]())
 	srv := httptest.NewServer(middleware.WithLogging(newRouter(repo, Log), Log))
 	defer srv.Close()
 	// Create a new HTTP client with a default timeout

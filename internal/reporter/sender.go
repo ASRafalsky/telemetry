@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	gauge   = "gauge"
-	counter = "counter"
+	gauge     = "gauge"
+	counter   = "counter"
+	batchSize = 1000
 )
 
 func Send(ctx context.Context, addr, mType string, interval time.Duration, client *httpclient.Client,
@@ -44,6 +45,7 @@ func sendJSONData(ctx context.Context, addr, mtype string, repo repository, clie
 	header := http.Header{
 		"Content-Type": []string{"application/json"},
 	}
+
 	var bufToSend = bytes.NewBuffer(nil)
 
 	zw := gzip.NewWriter(bufToSend)
@@ -58,7 +60,7 @@ func sendJSONData(ctx context.Context, addr, mtype string, repo repository, clie
 		return nil
 	}
 	header.Set("Content-Encoding", "gzip")
-	resp, errPost := client.Post(addr+"/update/", bufToSend, header)
+	resp, errPost := client.Post(addr+"/updates/", bufToSend, header)
 	if errPost != nil {
 		err = multierr.Append(err, fmt.Errorf("failed to post update: %w", errPost))
 		return err
@@ -128,37 +130,41 @@ func sendGaugeData(ctx context.Context, addr string, repo repository, client *ht
 
 func serializeMetrics(ctx context.Context, mtype string, repo repository, wc writerCloser) error {
 	var errRes error
-	_ = repo.ForEach(ctx, func(k string, v []byte) error {
+	_ = repo.DropFn(ctx, func(k string, v []byte) (bool, error) {
 		var (
 			key        string
 			typeToSend string
+			drop       bool
 		)
 		switch {
 		case strings.HasPrefix(k, gauge):
 			key = strings.TrimPrefix(k, gauge)
 			typeToSend = gauge
+			// Drop this entry, because we will send it and have a new value every time.
+			drop = true
 		case strings.HasPrefix(k, counter):
+			// Do not drop it because we need this value on the next pool call.
 			key = strings.TrimPrefix(k, counter)
 			typeToSend = counter
 		default:
-			return nil
+			return false, nil
 		}
 
 		if mtype != "" && mtype != typeToSend {
-			return nil
+			return false, nil
 		}
 
 		metric, err := dataToMetrics(typeToSend, key, v)
 		if err != nil {
 			errRes = multierr.Append(errRes,
 				fmt.Errorf("failed converting data to metric for %s(%s); %w", mtype, k, err))
-			return nil
+			return false, nil
 		}
 		if err := transport.SerializeMetrics(&metric, wc); err != nil {
 			errRes = multierr.Append(errRes, fmt.Errorf("failed to compress data for %s(%s); %w", mtype, k, err))
-			return nil
+			return false, nil
 		}
-		return nil
+		return drop, nil
 	})
 	return errRes
 }
@@ -190,8 +196,7 @@ type logger interface {
 }
 
 type repository interface {
-	Set(k string, v []byte)
-	Get(k string) ([]byte, bool)
+	DropFn(ctx context.Context, fn func(k string, v []byte) (bool, error)) error
 	ForEach(ctx context.Context, fn func(k string, v []byte) error) error
 	Size() int
 }
