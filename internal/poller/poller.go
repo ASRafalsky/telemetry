@@ -86,7 +86,4 @@ type logger interface {
 type repository interface {
 	Set(k string, v []byte)
 	Get(k string) ([]byte, bool)
-	ForEach(ctx context.Context, fn func(k string, v []byte) error) error
-	Size() int
-	Delete(k string)
 }

@@ -31,8 +31,8 @@ func updateCfg() (config.Server, error) {
 	if cfg.StorePeriod == config.DefaultDumpInterval {
 		flag.IntVar(&cfg.StorePeriod, "i", config.DefaultDumpInterval, "dump interval in seconds")
 	}
-	if cfg.DB.DSN == config.DefaultDBAddr {
-		flag.StringVar(&cfg.DB.DSN, "d", config.DefaultDBAddr, "database address")
+	if cfg.DB.DSN == "" {
+		flag.StringVar(&cfg.DB.DSN, "d", "", "database address")
 	}
 
 	flag.Parse()

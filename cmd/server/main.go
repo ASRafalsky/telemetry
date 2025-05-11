@@ -3,18 +3,14 @@ package main
 import (
 	"context"
 	"net/http"
-	"strconv"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 
-	"github.com/ASRafalsky/telemetry/internal/backup"
-	"github.com/ASRafalsky/telemetry/internal/db/postgres"
+	"github.com/ASRafalsky/telemetry/internal/cache"
 	"github.com/ASRafalsky/telemetry/internal/handlers"
 	"github.com/ASRafalsky/telemetry/internal/middleware"
 	"github.com/ASRafalsky/telemetry/internal/repository"
-	"github.com/ASRafalsky/telemetry/internal/storage"
 	"github.com/ASRafalsky/telemetry/internal/templates"
 	"github.com/ASRafalsky/telemetry/pkg/log"
 )
@@ -31,37 +27,19 @@ func main() {
 	}
 	defer Log.Sync()
 
-	Log.Info("Open db with dsn", "dsn", cfg.DB.DSN)
-	db, err := postgres.Open(cfg.DB.DSN)
-	if err != nil {
-		Log.Error("failed to connect to database: ", err.Error())
-	}
-	defer func() {
-		if err := db.Close(); err != nil {
-			Log.Error("Failed to close db:", err.Error())
-		}
-	}()
-
-	repo := repository.NewExtendedRepository(storage.New[string, []byte](), db)
-
-	if cfg.Restore {
-		if err = backup.RestoreRepo(cfg.DumpPath, repo); err != nil {
-			Log.Error("Failed to restore from the dump file:", cfg.DumpPath, err.Error())
-		}
-	}
+	repo := repository.NewExtendedRepository(cache.New[string, []byte]())
 
 	ctx := context.Background()
-	for i := range 5 {
-		ctxPing, cancel := context.WithTimeout(ctx, time.Second)
-		err = db.Ping(ctxPing)
-		if err != nil {
-			Log.Error("Failed to ping db:", strconv.Itoa(i), err.Error())
-		}
-		cancel()
-		time.Sleep(time.Second)
+	if db, err := initDB(ctx, cfg.DB.DSN, *Log); err == nil {
+		repo.UseDB(db)
+		defer func() {
+			if err = db.Close(); err != nil {
+				Log.Error("Failed to close db:", err.Error())
+			}
+		}()
 	}
 
-	go backup.BackupRepo(ctx, repo, cfg.StorePeriod, cfg.DumpPath, *Log)
+	repo.Maintain(ctx, cfg, *Log)
 
 	Log.Fatal("Failed to start server:" +
 		zap.String("err:",
@@ -94,9 +72,9 @@ func newRouter(repo dataRepository, logger *log.Logger) http.Handler {
 
 type dataRepository interface {
 	Set(k string, v []byte)
-	Get(k string) ([]byte, bool)
+	Get(ctx context.Context, k string) ([]byte, error)
 	ForEach(ctx context.Context, fn func(k string, v []byte) error) error
-	Size() int
-	Delete(k string)
+	Delete(ctx context.Context, k string) error
 	Ping(ctx context.Context) error
+	Size() (int, error)
 }

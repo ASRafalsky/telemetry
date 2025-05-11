@@ -17,16 +17,26 @@ const (
 	Counter = "counter"
 )
 
-func counterPostDataHandler(repo repository, value transport.Metrics) ([]byte, error) {
+var (
+	errCounterNotFound = errors.New("counter value not found")
+	errGaugeNotFound   = errors.New("gauge value not found")
+)
+
+func counterPostDataHandler(ctx context.Context, repo repository, value transport.Metrics) ([]byte, error) {
 	name := Counter + value.ID
-	if buf, ok := repo.Get(name); ok {
+	buf, err := repo.Get(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	if buf != nil {
 		previousValue := transport.Metrics{}
-		if err := easyjson.Unmarshal(buf, &previousValue); err != nil {
+		if err = easyjson.Unmarshal(buf, &previousValue); err != nil {
 			return nil, err
 		}
 		*value.Delta += *previousValue.Delta
 	}
-	buf, err := easyjson.Marshal(&value)
+
+	buf, err = easyjson.Marshal(&value)
 	if err != nil {
 		return nil, err
 	}
@@ -34,18 +44,26 @@ func counterPostDataHandler(repo repository, value transport.Metrics) ([]byte, e
 	return buf, nil
 }
 
-func gaugeGetDataHandler(repo repository, key string) ([]byte, error) {
-	if buf, ok := repo.Get(Gauge + key); ok {
-		return buf, nil
+func gaugeGetDataHandler(ctx context.Context, repo repository, key string) ([]byte, error) {
+	buf, err := repo.Get(ctx, Gauge+key)
+	if err != nil {
+		return nil, err
 	}
-	return nil, errors.New("gauge value not found")
+	if buf == nil {
+		return nil, errGaugeNotFound
+	}
+	return buf, nil
 }
 
-func counterGetDataHandler(repo repository, key string) ([]byte, error) {
-	if buf, ok := repo.Get(Counter + key); ok {
-		return buf, nil
+func counterGetDataHandler(ctx context.Context, repo repository, key string) ([]byte, error) {
+	buf, err := repo.Get(ctx, Counter+key)
+	if err != nil {
+		return nil, err
 	}
-	return nil, errors.New("counter value not found")
+	if buf == nil {
+		return nil, errCounterNotFound
+	}
+	return buf, nil
 }
 
 func gaugePostDataHandler(repo repository, value transport.Metrics) ([]byte, error) {
@@ -57,7 +75,7 @@ func gaugePostDataHandler(repo repository, value transport.Metrics) ([]byte, err
 	return buf, nil
 }
 
-func SetDataTo(repo repository, m transport.Metrics) ([]byte, int, error) {
+func SetDataTo(ctx context.Context, repo repository, m transport.Metrics) ([]byte, int, error) {
 	switch m.MType {
 	case Gauge:
 		switch {
@@ -75,7 +93,7 @@ func SetDataTo(repo repository, m transport.Metrics) ([]byte, int, error) {
 	case Counter:
 		switch {
 		case m.Delta != nil:
-			dataBuf, err := counterPostDataHandler(repo, m)
+			dataBuf, err := counterPostDataHandler(ctx, repo, m)
 			if err != nil {
 				return nil, http.StatusInternalServerError, err
 			}
@@ -90,16 +108,16 @@ func SetDataTo(repo repository, m transport.Metrics) ([]byte, int, error) {
 	}
 }
 
-func GetDataFrom(repo repository, m transport.Metrics) ([]byte, int, error) {
+func GetDataFrom(ctx context.Context, repo repository, m transport.Metrics) ([]byte, int, error) {
 	switch m.MType {
 	case Gauge:
-		dataBuf, err := gaugeGetDataHandler(repo, m.ID)
+		dataBuf, err := gaugeGetDataHandler(ctx, repo, m.ID)
 		if err != nil {
 			return nil, http.StatusNotFound, err
 		}
 		return dataBuf, http.StatusOK, nil
 	case Counter:
-		dataBuf, err := counterGetDataHandler(repo, m.ID)
+		dataBuf, err := counterGetDataHandler(ctx, repo, m.ID)
 		if err != nil {
 			return nil, http.StatusNotFound, err
 		}
@@ -109,8 +127,12 @@ func GetDataFrom(repo repository, m transport.Metrics) ([]byte, int, error) {
 	}
 }
 
-func getKeyList(repo repository) []string {
-	result := make([]string, repo.Size())
+func getKeyList(repo repository) ([]string, error) {
+	sz, err := repo.Size()
+	if err != nil {
+		return nil, err
+	}
+	result := make([]string, sz)
 	_ = repo.ForEach(context.Background(), func(k string, _ []byte) error {
 		switch {
 		case strings.HasPrefix(k, Gauge):
@@ -122,5 +144,5 @@ func getKeyList(repo repository) []string {
 		}
 		return nil
 	})
-	return result
+	return result, nil
 }
