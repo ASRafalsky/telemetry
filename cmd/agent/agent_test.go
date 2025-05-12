@@ -90,6 +90,9 @@ func TestAgent(t *testing.T) {
 				panic("wrong request")
 			})
 		})
+		r.Route("/updates", func(r chi.Router) {
+			r.Post("/", jsonHandler())
+		})
 		r.Post("/", func(w http.ResponseWriter, r *http.Request) {
 			panic("wrong request")
 		})

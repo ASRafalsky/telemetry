@@ -18,16 +18,20 @@ func (r *ExtendedRepository) Maintain(ctx context.Context, cfg config.Server, l 
 
 	switch {
 	case r.db != nil && cfg.DB.DSN != "":
+		l.Info("Repository syncs with database", cfg.DB.DSN)
 		go func() {
 			r.syncer(ctx, l)
-
 		}()
 	case cfg.DumpPath != config.DefaultDumpPath && cfg.StorePeriod != config.DefaultDumpInterval:
+		l.Info("Repository syncs with file", cfg.DumpPath)
 		go backup.BackupRepo(ctx, r, cfg.StorePeriod, cfg.DumpPath, l)
+	default:
+		l.Info("Inmemory repository")
 	}
 }
 
 func (r *ExtendedRepository) syncer(ctx context.Context, l log.Logger) {
+	l.Info("Starting syncer")
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer func() {
 		l.Info("Syncing repository stopped")
@@ -49,6 +53,8 @@ func (r *ExtendedRepository) syncer(ctx context.Context, l log.Logger) {
 			}
 			if err := r.Sync(ctx); err != nil {
 				l.Error("Failed to sync data with db", err.Error())
+			} else {
+				r.Ready()
 			}
 		}
 	}

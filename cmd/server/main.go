@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
@@ -27,6 +28,7 @@ func main() {
 	}
 	defer Log.Sync()
 
+	Log.Info("Starting telemetry server", cfg.Addr, cfg.LogLevel, cfg.DumpPath)
 	repo := repository.NewExtendedRepository(cache.New[string, []byte]())
 
 	ctx := context.Background()
@@ -41,6 +43,14 @@ func main() {
 
 	repo.Maintain(ctx, cfg, *Log)
 
+	pid, err := findPIDByPort(strings.TrimLeft(cfg.Addr, ":"))
+	if err == nil && pid > 0 {
+		if err = killProcess(pid); err != nil {
+			Log.Error("Failed to kill process:", err.Error())
+		}
+	}
+
+	Log.Info("Starting server", cfg.Addr)
 	Log.Fatal("Failed to start server:" +
 		zap.String("err:",
 			http.ListenAndServe(cfg.Addr, middleware.WithLogging(newRouter(repo, Log), Log)).Error()).String)
@@ -63,6 +73,9 @@ func newRouter(repo dataRepository, logger *log.Logger) http.Handler {
 		})
 		r.Route("/ping", func(r chi.Router) {
 			r.Get("/", handlers.DBPingHandler(repo))
+		})
+		r.Route("/updates", func(r chi.Router) {
+			r.Post("/", middleware.WithCompress(handlers.JSONPostHandler(repo, handlers.SetDataTo), logger))
 		})
 		r.Post("/", handlers.FailurePostHandler())
 		r.Get("/", middleware.WithCompress(handlers.AllGetHandler(templates.PrepareTemplate(), repo), logger))

@@ -22,7 +22,7 @@ func JSONPostHandler(repo repository, fn dataHandler) func(http.ResponseWriter, 
 	return func(res http.ResponseWriter, req *http.Request) {
 		buf, err := io.ReadAll(req.Body)
 		if err != nil {
-			http.Error(res, err.Error(), http.StatusInternalServerError)
+			res.WriteHeader(http.StatusNotFound)
 			return
 		}
 		defer func() {
@@ -31,23 +31,24 @@ func JSONPostHandler(repo repository, fn dataHandler) func(http.ResponseWriter, 
 		}()
 		metricList, err := transport.DeserializeMetrics(buf)
 		if err != nil {
-			http.Error(res, err.Error(), http.StatusInternalServerError)
+			res.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 		if len(metricList) == 0 {
-			http.Error(res, "metrics list is empty", http.StatusInternalServerError)
+			res.WriteHeader(http.StatusNotFound)
+			return
 		}
 		for _, m := range metricList {
 			var status int
 			buf, status, err = fn(req.Context(), repo, m)
 			if err != nil {
-				http.Error(res, err.Error(), status)
+				res.WriteHeader(status)
 				return
 			}
 
 			res.Header().Set("Content-Type", "application/json")
 			if _, err = res.Write(buf); err != nil {
-				http.Error(res, err.Error(), http.StatusInternalServerError)
+				res.WriteHeader(http.StatusInternalServerError)
 				return
 			}
 

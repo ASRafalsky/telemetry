@@ -92,12 +92,17 @@ func TestSend(t *testing.T) {
 	}
 
 	r := chi.NewRouter()
-	r.Route("/update", func(r chi.Router) {
-		r.Post("/", jsonHandler())
-		r.Post("/gauge/{name}/{value}", gaugeHandler())
-		r.Post("/counter/{name}/{value}", counterHandler())
-		r.Post("/{type}/{name}/{value}", func(w http.ResponseWriter, r *http.Request) {
-			panic("wrong request")
+	r.Route("/", func(r chi.Router) {
+		r.Route("/update", func(r chi.Router) {
+			r.Post("/", jsonHandler())
+			r.Post("/gauge/{name}/{value}", gaugeHandler())
+			r.Post("/counter/{name}/{value}", counterHandler())
+			r.Post("/{type}/{name}/{value}", func(w http.ResponseWriter, r *http.Request) {
+				panic("wrong request")
+			})
+		})
+		r.Route("/updates", func(r chi.Router) {
+			r.Post("/", jsonHandler())
 		})
 	})
 

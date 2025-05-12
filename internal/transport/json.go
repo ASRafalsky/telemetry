@@ -24,7 +24,7 @@ func DeserializeMetrics(buf []byte) ([]Metrics, error) {
 			if err == io.EOF {
 				break
 			}
-			return metricList, err
+			return metricList, nil
 		}
 		metricList = append(metricList, m)
 		idx = bytes.Index(buf, []byte{'}'})

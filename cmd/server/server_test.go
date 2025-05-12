@@ -77,13 +77,13 @@ func TestServerStatuses(t *testing.T) {
 			name:          "wrong_req",
 			url:           srv.URL + "/update/",
 			header:        header,
-			expStatusCode: http.StatusInternalServerError,
+			expStatusCode: http.StatusNotFound,
 		},
 		{
 			name:          "wrong_req",
 			url:           srv.URL + "/value/",
 			header:        header,
-			expStatusCode: http.StatusInternalServerError,
+			expStatusCode: http.StatusNotFound,
 		},
 		{
 			name:          "wrong_url_again",
@@ -561,6 +561,66 @@ func Test_JSON_encoding(t *testing.T) {
 			expResponse: transport.Metrics{
 				MType: "counter",
 				ID:    "c_value0",
+				Delta: &updatedCounterVal,
+			},
+		},
+		{
+			name: "correct_gauge_update_1",
+			url:  srv.URL + "/updates/",
+			data: transport.Metrics{
+				MType: "gauge",
+				ID:    "g_value01",
+				Value: &gaugeVal,
+			},
+			expStatusCode: http.StatusOK,
+			expResponse: transport.Metrics{
+				MType: "gauge",
+				ID:    "g_value01",
+				Value: &gaugeVal,
+			},
+		},
+		{
+			name: "correct_gauge_update_2",
+			url:  srv.URL + "/updates/",
+			data: transport.Metrics{
+				MType: "gauge",
+				ID:    "g_value11",
+				Value: &gaugeVal,
+			},
+			expStatusCode: http.StatusOK,
+			expResponse: transport.Metrics{
+				MType: "gauge",
+				ID:    "g_value11",
+				Value: &gaugeVal,
+			},
+		},
+		{
+			name: "correct_counter_update_1",
+			url:  srv.URL + "/updates/",
+			data: transport.Metrics{
+				MType: "counter",
+				ID:    "c_value01",
+				Delta: &counterVal,
+			},
+			expStatusCode: http.StatusOK,
+			expResponse: transport.Metrics{
+				MType: "counter",
+				ID:    "c_value01",
+				Delta: &counterVal,
+			},
+		},
+		{
+			name: "correct_counter_update_2",
+			url:  srv.URL + "/updates/",
+			data: transport.Metrics{
+				MType: "counter",
+				ID:    "c_value01",
+				Delta: &counterVal,
+			},
+			expStatusCode: http.StatusOK,
+			expResponse: transport.Metrics{
+				MType: "counter",
+				ID:    "c_value01",
 				Delta: &updatedCounterVal,
 			},
 		},

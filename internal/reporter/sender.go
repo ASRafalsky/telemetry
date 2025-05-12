@@ -60,7 +60,7 @@ func sendJSONData(ctx context.Context, addr, mtype string, repo repository, clie
 		return nil
 	}
 	header.Set("Content-Encoding", "gzip")
-	resp, errPost := client.Post(addr+"/update/", bufToSend, header)
+	resp, errPost := client.Post(addr+"/updates/", bufToSend, header)
 	if errPost != nil {
 		err = multierr.Append(err, fmt.Errorf("failed to post update: %w", errPost))
 		return err
