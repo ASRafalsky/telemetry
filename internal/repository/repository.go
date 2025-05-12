@@ -2,8 +2,10 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/ASRafalsky/telemetry/internal/db/postgres"
 	"github.com/ASRafalsky/telemetry/internal/handlers"
@@ -51,7 +53,15 @@ func (r *ExtendedRepository) Get(ctx context.Context, key string) ([]byte, error
 		return val, nil
 	}
 	if r.db != nil {
-		return r.db.Get(ctx, key)
+		var (
+			val []byte
+			err error
+		)
+		err = withRetryOnErr(ctx, 3, func() error {
+			val, err = r.db.Get(ctx, key)
+			return err
+		})
+		return val, err
 	}
 	return nil, nil
 }
@@ -59,7 +69,9 @@ func (r *ExtendedRepository) Get(ctx context.Context, key string) ([]byte, error
 func (r *ExtendedRepository) Delete(ctx context.Context, key string) error {
 	r.cache.Delete(key)
 	if r.db != nil {
-		return r.db.Delete(ctx, key)
+		return withRetryOnErr(ctx, 3, func() error {
+			return r.db.Delete(ctx, key)
+		})
 	}
 	return nil
 }
@@ -71,14 +83,22 @@ func (r *ExtendedRepository) ForEach(ctx context.Context, fn func(k string, v []
 				return err
 			}
 		}
-		return r.db.ForEach(ctx, fn)
+		return withRetryOnErr(ctx, 3, func() error { return r.db.ForEach(ctx, fn) })
 	}
 	return r.cache.ForEach(ctx, fn)
 }
 
 func (r *ExtendedRepository) Size() (int, error) {
 	if r.db != nil {
-		return r.db.Size()
+		var (
+			sz  int
+			err error
+		)
+		err = withRetryOnErr(context.Background(), 3, func() error {
+			sz, err = r.db.Size()
+			return err
+		})
+		return sz, err
 	}
 	return r.cache.Size(), nil
 }
@@ -103,7 +123,7 @@ func (r *ExtendedRepository) Sync(ctx context.Context) error {
 		return err
 	}
 	r.Ready()
-	return r.db.SetBatch(ctx, p)
+	return withRetryOnErr(ctx, 3, func() error { return r.db.SetBatch(ctx, p) })
 }
 
 func (r *ExtendedRepository) CacheSize() int {
@@ -128,4 +148,29 @@ type db interface {
 	SetBatch(ctx context.Context, batch []postgres.Pair) error
 	Close() error
 	Size() (int, error)
+}
+
+func withRetryOnErr(ctx context.Context, cnt int, fn func() error) error {
+	err := fn()
+	if err != nil && (errors.Is(err, postgres.ErrConnectionIssue) || errors.Is(err, postgres.ErrTransaction)) {
+		cnt--
+		wait := 1
+		ticker := time.NewTicker(time.Duration(wait) * time.Second)
+		defer ticker.Stop()
+		for cnt > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-ticker.C:
+				err = fn()
+				if err == nil {
+					return nil
+				}
+				wait += 2
+				ticker.Reset(time.Duration(wait) * time.Second)
+				cnt--
+			}
+		}
+	}
+	return err
 }

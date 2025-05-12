@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 
+	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/multierr"
 )
@@ -12,6 +14,11 @@ import (
 type DB struct {
 	*sql.DB
 }
+
+var (
+	ErrConnectionIssue = errors.New("database connection issue")
+	ErrTransaction     = errors.New("database transaction issue")
+)
 
 func Open(param string) (DB, error) {
 	db, err := sql.Open("pgx", param)
@@ -63,7 +70,7 @@ func (d DB) Set(ctx context.Context, key string, data []byte) error {
 
 func (d DB) set(ctx context.Context, query, key string, data []byte) error {
 	_, err := d.ExecContext(ctx, query, key, data)
-	return err
+	return errorHandler(err)
 }
 
 func (d DB) Get(ctx context.Context, key string) ([]byte, error) {
@@ -76,7 +83,10 @@ func (d DB) get(ctx context.Context, query, key string) ([]byte, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
-	return payload, err
+	if err != nil {
+		return nil, errorHandler(err)
+	}
+	return payload, nil
 }
 
 func (d DB) Delete(ctx context.Context, key string) error {
@@ -88,11 +98,11 @@ func (d DB) deleteEntrie(ctx context.Context, query, key string) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
-	return err
+	return errorHandler(err)
 }
 
 func (d DB) ForEach(ctx context.Context, fn func(k string, v []byte) error) error {
-	return d.forEach(ctx, `SELECT id, payload FROM metrics ORDER BY id LIMIT $1 OFFSET $2`, fn)
+	return errorHandler(d.forEach(ctx, `SELECT id, payload FROM metrics ORDER BY id LIMIT $1 OFFSET $2`, fn))
 }
 
 const BatchSz = 1000
@@ -145,7 +155,13 @@ func (d DB) forEach(ctx context.Context, query string, fn func(k string, v []byt
 func (d DB) Size() (int, error) {
 	var sz int
 	err := d.QueryRow(`SELECT COUNT(*) FROM metrics`).Scan(&sz)
-	return sz, err
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, errorHandler(err)
+	}
+	return sz, nil
 }
 
 type Pair struct {
@@ -154,8 +170,8 @@ type Pair struct {
 }
 
 func (d DB) SetBatch(ctx context.Context, batch []Pair) error {
-	return d.setBatch(ctx,
-		`INSERT INTO metrics (id, payload) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET payload = $2`, batch)
+	return errorHandler(d.setBatch(ctx,
+		`INSERT INTO metrics (id, payload) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET payload = $2`, batch))
 }
 
 func (d DB) setBatch(ctx context.Context, query string, batch []Pair) error {
@@ -174,4 +190,20 @@ func (d DB) setBatch(ctx context.Context, query string, batch []Pair) error {
 		}
 	}
 	return tx.Commit()
+}
+
+func errorHandler(err error) error {
+	var pgErr *pgconn.PgError
+	if err != nil && errors.As(err, &pgErr) {
+		switch {
+		case pgerrcode.IsInvalidTransactionInitiation(pgErr.Code),
+			pgerrcode.IsInvalidTransactionState(pgErr.Code),
+			pgerrcode.IsInvalidTransactionTermination(pgErr.Code):
+			return ErrTransaction
+		case pgerrcode.IsConnectionException(pgErr.Code):
+			return ErrConnectionIssue
+
+		}
+	}
+	return err
 }

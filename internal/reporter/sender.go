@@ -17,9 +17,8 @@ import (
 )
 
 const (
-	gauge     = "gauge"
-	counter   = "counter"
-	batchSize = 1000
+	gauge   = "gauge"
+	counter = "counter"
 )
 
 func Send(ctx context.Context, addr, mType string, interval time.Duration, client *httpclient.Client,
@@ -34,9 +33,13 @@ func Send(ctx context.Context, addr, mType string, interval time.Duration, clien
 		case <-ctx.Done():
 			return
 		case <-sendTimer.C:
-			if err := sendJSONData(ctx, addr, "", repo, client); err != nil {
+			sendCtx, cancel := context.WithTimeout(ctx, interval*90/100) // I'm so sorry)).
+			if err := withRetryOnErr(sendCtx, 3, func() error {
+				return sendJSONData(ctx, addr, "", repo, client)
+			}); err != nil {
 				log.Error("[send/json] failed to send data] for", mType, ":", err.Error())
 			}
+			cancel()
 		}
 	}
 }
@@ -185,6 +188,31 @@ func dataToMetrics(mtype, name string, d []byte) (transport.Metrics, error) {
 		return transport.Metrics{}, fmt.Errorf("unknown metrics type: %s", mtype)
 	}
 	return metrics, nil
+}
+
+func withRetryOnErr(ctx context.Context, cnt int, fn func() error) error {
+	cnt--
+	err := fn()
+	if err != nil && strings.Contains(err.Error(), "connection refused") {
+		wait := 1
+		ticker := time.NewTicker(time.Duration(wait) * time.Second)
+		defer ticker.Stop()
+		for cnt >= 1 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-ticker.C:
+				err = fn()
+				if err == nil {
+					return nil
+				}
+				wait += 2
+				ticker.Reset(time.Duration(wait) * time.Second)
+				cnt--
+			}
+		}
+	}
+	return err
 }
 
 type logger interface {
