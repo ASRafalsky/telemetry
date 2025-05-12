@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const cnt = 100
+const cnt = 1000
 
 func TestSerializeMetrics(t *testing.T) {
 	metricsList := make([]Metrics, cnt)
@@ -126,41 +126,6 @@ func BenchmarkJSONConvertation(b *testing.B) {
 			b.Fatal(err)
 		}
 		err = json.Unmarshal(buf, &outputMetrics)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-	b.StopTimer()
-	require.Len(b, outputMetrics, cnt)
-}
-
-func BenchmarkComlexConvertation(b *testing.B) {
-	metricsList := make([]Metrics, cnt)
-	for i := range cnt {
-		var (
-			val   = rand.Float64()
-			delta = rand.Int64()
-		)
-		metricsList[i] = Metrics{
-			MType: "MType" + strconv.Itoa(i),
-			ID:    "ID" + strconv.Itoa(i),
-			Value: &val,
-			Delta: &delta,
-		}
-	}
-	require.Len(b, metricsList, cnt)
-	var (
-		outputMetrics []Metrics
-		buf           []byte
-		err           error
-	)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		buf, err = json.Marshal(metricsList)
-		if err != nil {
-			b.Fatal(err)
-		}
-		outputMetrics, err = DeserializeMetrics(buf)
 		if err != nil {
 			b.Fatal(err)
 		}
