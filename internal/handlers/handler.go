@@ -22,9 +22,11 @@ func JSONPostHandler(repo repository, fn dataHandler) func(http.ResponseWriter, 
 	return func(res http.ResponseWriter, req *http.Request) {
 		buf, err := io.ReadAll(req.Body)
 		if err != nil {
+			fmt.Println("ololo body!!!", err.Error(), len(buf))
 			res.WriteHeader(http.StatusNotFound)
 			return
 		}
+		fmt.Println("ololo body!!!", len(buf), string(buf))
 		defer func() {
 			// Handled at the logging level.
 			_ = req.Body.Close()
@@ -35,6 +37,7 @@ func JSONPostHandler(repo repository, fn dataHandler) func(http.ResponseWriter, 
 			return
 		}
 		if len(metricList) == 0 {
+			fmt.Println("ololo metricList empty!!!")
 			res.WriteHeader(http.StatusNotFound)
 			return
 		}

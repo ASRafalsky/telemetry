@@ -3,10 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
-	"os/exec"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/ASRafalsky/telemetry/internal/db/postgres"
@@ -30,28 +26,4 @@ func initDB(ctx context.Context, dsn string, l log.Logger) (postgres.DB, error) 
 		return postgres.DB{}, errors.New("failed to connect to database")
 	}
 	return db, nil
-}
-
-func findPIDByPort(port string) (int, error) {
-	cmd := exec.Command("lsof", "-t", "-i", ":"+port)
-	output, err := cmd.Output()
-	if err != nil {
-		if strings.Contains(err.Error(), "exit status 1") {
-			return -1, nil // Порт свободен
-		}
-		return -1, err
-	}
-
-	pidStr := strings.TrimSpace(string(output))
-	pid, err := strconv.Atoi(pidStr)
-	if err != nil {
-		return -1, fmt.Errorf("invalid pid: %s", pidStr)
-	}
-
-	return pid, nil
-}
-
-func killProcess(pid int) error {
-	cmd := exec.Command("kill", "-9", strconv.Itoa(pid))
-	return cmd.Run()
 }

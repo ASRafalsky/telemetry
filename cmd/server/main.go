@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"net/http"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
@@ -42,13 +41,6 @@ func main() {
 	}
 
 	repo.Maintain(ctx, cfg, *Log)
-
-	pid, err := findPIDByPort(strings.TrimLeft(cfg.Addr, ":"))
-	if err == nil && pid > 0 {
-		if err = killProcess(pid); err != nil {
-			Log.Error("Failed to kill process:", err.Error())
-		}
-	}
 
 	Log.Info("Starting server", cfg.Addr)
 	Log.Fatal("Failed to start server:" +

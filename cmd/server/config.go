@@ -13,28 +13,45 @@ func updateCfg() (config.Server, error) {
 	cfg := config.Server{}
 	err := env.Parse(&cfg)
 
+	var (
+		restore     bool
+		addr        string
+		loglevel    string
+		logPath     string
+		dumpPath    string
+		storePeriod int
+		dsn         string
+	)
+	flag.BoolVar(&restore, "r", false, "need to restore from the dump")
+	flag.StringVar(&addr, "a", config.DefaultAddr, "address and port to run server")
+	flag.StringVar(&loglevel, "l", config.DefaultLogLevel, "log level")
+	flag.StringVar(&logPath, "p", "", "log file path")
+	flag.StringVar(&dumpPath, "f", config.DefaultDumpPath, "dump file path")
+	flag.IntVar(&storePeriod, "i", config.DefaultDumpInterval, "dump interval in seconds")
+	flag.StringVar(&dsn, "d", "", "database address")
+	flag.Parse()
+
 	if envRestore := os.Getenv("RESTORE"); envRestore == "" {
-		flag.BoolVar(&cfg.Restore, "r", false, "need to restore from the dump")
+		cfg.Restore = restore
 	}
 	if cfg.Addr == config.DefaultAddr {
-		flag.StringVar(&cfg.Addr, "a", config.DefaultAddr, "address and port to run server")
+		cfg.Addr = addr
 	}
 	if cfg.LogLevel == config.DefaultLogLevel {
-		flag.StringVar(&cfg.LogLevel, "l", config.DefaultLogLevel, "log level")
+		cfg.LogLevel = loglevel
 	}
 	if cfg.LogPath == "" {
-		flag.StringVar(&cfg.LogPath, "p", "", "log file path")
+		cfg.LogPath = logPath
 	}
 	if cfg.DumpPath == config.DefaultDumpPath {
-		flag.StringVar(&cfg.DumpPath, "f", config.DefaultDumpPath, "dump file path")
+		cfg.DumpPath = dumpPath
 	}
 	if cfg.StorePeriod == config.DefaultDumpInterval {
-		flag.IntVar(&cfg.StorePeriod, "i", config.DefaultDumpInterval, "dump interval in seconds")
+		cfg.StorePeriod = storePeriod
 	}
 	if cfg.DB.DSN == "" {
-		flag.StringVar(&cfg.DB.DSN, "d", "", "database address")
+		cfg.DB.DSN = dsn
 	}
 
-	flag.Parse()
 	return cfg, err
 }

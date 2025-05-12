@@ -695,6 +695,23 @@ func Test_JSON_encoding(t *testing.T) {
 		})
 	}
 
+	t.Run("updates", func(t *testing.T) {
+		bufToSend := bytes.NewBuffer(nil)
+		zr := gzip.NewWriter(bufToSend)
+		require.NoError(t, err)
+		for _, tt := range ttJSONUpdate {
+			if tt.url == srv.URL+"/updates/" {
+				require.NoError(t, transport.SerializeMetrics(&tt.data, zr))
+			}
+		}
+		require.NoError(t, zr.Close())
+		header.Set("Content-Encoding", "gzip")
+		resp, err := client.Post(srv.URL+"/updates/", bufToSend, header)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	})
+
 	ttJSONValue := []struct {
 		name          string
 		url           string

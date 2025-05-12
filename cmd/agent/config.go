@@ -12,22 +12,36 @@ func updateCfg() (config.Agent, error) {
 	cfg := config.Agent{}
 	err := env.Parse(&cfg)
 
+	var (
+		addr          string
+		loglevel      string
+		logPath       string
+		reportPeriod  int
+		pollingPeriod int
+	)
+
+	flag.StringVar(&addr, "a", config.DefaultAddr, "address and port to run agent")
+	flag.StringVar(&loglevel, "l", config.DefaultLogLevel, "log level")
+	flag.StringVar(&logPath, "f", "", "log file path")
+	flag.IntVar(&reportPeriod, "r", config.DefaultReportInterval, "send data time interval")
+	flag.IntVar(&pollingPeriod, "p", config.DefaultPollInterval, "get data time interval")
+	flag.Parse()
+
 	if cfg.Addr == config.DefaultAddr {
-		flag.StringVar(&cfg.Addr, "a", config.DefaultAddr, "address and port to run agent")
+		cfg.Addr = addr
 	}
 	if cfg.LogLevel == config.DefaultLogLevel {
-		flag.StringVar(&cfg.LogLevel, "l", config.DefaultLogLevel, "log level")
+		cfg.LogLevel = loglevel
 	}
 	if cfg.LogPath == "" {
-		flag.StringVar(&cfg.LogPath, "f", "", "log file path")
+		cfg.LogPath = logPath
 	}
 	if cfg.ReportPeriod == config.DefaultReportInterval {
-		flag.IntVar(&cfg.ReportPeriod, "r", config.DefaultReportInterval, "send data time interval")
+		cfg.ReportPeriod = reportPeriod
 	}
 	if cfg.PollingPeriod == config.DefaultPollInterval {
-		flag.IntVar(&cfg.PollingPeriod, "p", config.DefaultPollInterval, "get data time interval")
+		cfg.PollingPeriod = pollingPeriod
 	}
 
-	flag.Parse()
 	return cfg, err
 }
