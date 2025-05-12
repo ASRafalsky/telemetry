@@ -18,9 +18,12 @@ type Metrics struct {
 
 func DeserializeMetrics(buf []byte) ([]Metrics, error) {
 	var metricList []Metrics
+	if err := json.Unmarshal(buf, &metricList); err == nil {
+		return metricList, nil
+	}
 	for idx := bytes.Index(buf, []byte{'}'}); idx >= 0 && len(buf) > idx; idx = bytes.Index(buf, []byte{'}'}) {
 		m := Metrics{}
-		if err := easyjson.Unmarshal(buf[:idx+1], &m); err != nil {
+		if err := easyjson.Unmarshal(bytes.TrimPrefix(buf[:idx+1], []byte(",")), &m); err != nil {
 			if err == io.EOF {
 				break
 			}
@@ -34,7 +37,7 @@ func DeserializeMetrics(buf []byte) ([]Metrics, error) {
 }
 
 func SerializeMetrics(m *Metrics, w writer) error {
-	buf, err := json.Marshal(m)
+	buf, err := easyjson.Marshal(m)
 	if err != nil {
 		return err
 	}
