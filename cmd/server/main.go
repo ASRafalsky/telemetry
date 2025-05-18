@@ -31,7 +31,7 @@ func main() {
 	repo := repository.NewExtendedRepository(cache.New[string, []byte]())
 
 	ctx := context.Background()
-	if db, err := initDB(ctx, cfg.DB.DSN, *Log); err == nil {
+	if db, err := initDB(ctx, cfg.DB, *Log); err == nil {
 		repo.UseDB(db)
 		defer func() {
 			if err = db.Close(); err != nil {

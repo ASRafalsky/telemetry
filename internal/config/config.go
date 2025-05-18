@@ -17,7 +17,9 @@ type CommonFields struct {
 }
 
 type DB struct {
-	DSN string `env:"DATABASE_DSN" envDefault:""`
+	DSN             string `env:"DATABASE_DSN" envDefault:""`
+	MigrationsPath  string
+	MigrationsTable string
 }
 
 type Server struct {

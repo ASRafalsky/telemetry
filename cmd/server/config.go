@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"os"
+	"path/filepath"
+	"runtime"
 
 	"github.com/caarlos0/env/v10"
 
@@ -14,14 +16,17 @@ func updateCfg() (config.Server, error) {
 	err := env.Parse(&cfg)
 
 	var (
-		restore     bool
-		addr        string
-		loglevel    string
-		logPath     string
-		dumpPath    string
-		storePeriod int
-		dsn         string
+		restore         bool
+		addr            string
+		loglevel        string
+		logPath         string
+		dumpPath        string
+		storePeriod     int
+		dsn             string
+		migrationsPath  string
+		migrationsTable string
 	)
+
 	flag.BoolVar(&restore, "r", false, "need to restore from the dump")
 	flag.StringVar(&addr, "a", config.DefaultAddr, "address and port to run server")
 	flag.StringVar(&loglevel, "l", config.DefaultLogLevel, "log level")
@@ -29,7 +34,16 @@ func updateCfg() (config.Server, error) {
 	flag.StringVar(&dumpPath, "f", config.DefaultDumpPath, "dump file path")
 	flag.IntVar(&storePeriod, "i", config.DefaultDumpInterval, "dump interval in seconds")
 	flag.StringVar(&dsn, "d", "", "database address")
+	flag.StringVar(&migrationsPath, "m", "", "path to migrations")
+	flag.StringVar(&migrationsTable, "t", "", "name of migration table, where migrator writes own data")
 	flag.Parse()
+
+	if migrationsPath == "" {
+		_, file, _, ok := runtime.Caller(0)
+		if ok {
+			cfg.DB.MigrationsPath = filepath.Dir(file) + "/db/migrations"
+		}
+	}
 
 	if envRestore := os.Getenv("RESTORE"); envRestore == "" {
 		cfg.Restore = restore

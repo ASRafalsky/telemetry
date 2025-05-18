@@ -1,6 +1,8 @@
 package main
 
 import (
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -22,6 +24,9 @@ func TestUpdateCfg_Default(t *testing.T) {
 		StorePeriod: config.DefaultDumpInterval,
 		Restore:     false,
 	}
+	_, file, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	defSrvCfg.DB.MigrationsPath = filepath.Dir(file) + "/db/migrations"
 
 	cfg, err := updateCfg()
 	require.NoError(t, err)
