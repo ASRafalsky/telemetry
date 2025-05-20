@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"strings"
@@ -21,7 +24,7 @@ const (
 	counter = "counter"
 )
 
-func Send(ctx context.Context, addr, mType string, interval time.Duration, client *httpclient.Client,
+func Send(ctx context.Context, addr, mType, key string, interval time.Duration, client *httpclient.Client,
 	repo repository, log logger) {
 	log.Info("Reporeter started with interval:", interval.String())
 
@@ -35,7 +38,7 @@ func Send(ctx context.Context, addr, mType string, interval time.Duration, clien
 		case <-sendTimer.C:
 			sendCtx, cancel := context.WithTimeout(ctx, interval*90/100) // I'm so sorry)).
 			if err := withRetryOnErr(sendCtx, 3, func() error {
-				return sendJSONData(ctx, addr, "", repo, client)
+				return sendJSONData(ctx, addr, "", key, repo, client)
 			}); err != nil {
 				log.Error("[send/json] failed to send data] for", mType, ":", err.Error())
 			}
@@ -44,7 +47,7 @@ func Send(ctx context.Context, addr, mType string, interval time.Duration, clien
 	}
 }
 
-func sendJSONData(ctx context.Context, addr, mtype string, repo repository, client *httpclient.Client) (err error) {
+func sendJSONData(ctx context.Context, addr, mtype, key string, repo repository, client *httpclient.Client) (err error) {
 	header := http.Header{
 		"Content-Type": []string{"application/json"},
 	}
@@ -62,6 +65,15 @@ func sendJSONData(ctx context.Context, addr, mtype string, repo repository, clie
 		}
 		return nil
 	}
+
+	if key != "" {
+		h := hmac.New(sha256.New, []byte(key))
+		if _, err = h.Write(bufToSend.Bytes()); err != nil {
+			return err
+		}
+		header.Set("HashSHA256", hex.EncodeToString(h.Sum(nil)))
+	}
+
 	header.Set("Content-Encoding", "gzip")
 	resp, errPost := client.Post(addr+"/updates/", bufToSend, header)
 	if errPost != nil {

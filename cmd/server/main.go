@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/ASRafalsky/telemetry/internal/cache"
+	"github.com/ASRafalsky/telemetry/internal/config"
 	"github.com/ASRafalsky/telemetry/internal/handlers"
 	"github.com/ASRafalsky/telemetry/internal/middleware"
 	"github.com/ASRafalsky/telemetry/internal/repository"
@@ -45,32 +46,43 @@ func main() {
 	Log.Info("Starting server", cfg.Addr)
 	Log.Fatal("Failed to start server:" +
 		zap.String("err:",
-			http.ListenAndServe(cfg.Addr, middleware.WithLogging(newRouter(repo, Log), Log)).Error()).String)
+			http.ListenAndServe(cfg.Addr, middleware.WithLogging(newRouter(repo, cfg, Log), Log)).Error()).String)
 }
 
-func newRouter(repo dataRepository, logger *log.Logger) http.Handler {
+func newRouter(repo dataRepository, cfg config.Server, logger *log.Logger) http.Handler {
 	r := chi.NewRouter()
 	r.Route("/", func(r chi.Router) {
 		r.Route("/update", func(r chi.Router) {
-			r.Post("/", middleware.WithCompress(handlers.JSONPostHandler(repo, handlers.SetDataTo), logger))
-			r.Post("/gauge/{name}/{value}", handlers.GaugePostHandler(repo))
-			r.Post("/counter/{name}/{value}", handlers.CounterPostHandler(repo))
-			r.Post("/{type}/{name}/{value}", handlers.FailurePostHandler())
+			r.Post("/",
+				middleware.WithSign(middleware.WithCompress(handlers.JSONPostHandler(repo, handlers.SetDataTo), logger),
+					[]byte(cfg.Key), logger))
+			r.Post("/gauge/{name}/{value}",
+				middleware.WithSign(handlers.GaugePostHandler(repo), []byte(cfg.Key), logger))
+			r.Post("/counter/{name}/{value}",
+				middleware.WithSign(handlers.CounterPostHandler(repo), []byte(cfg.Key), logger))
+			r.Post("/{type}/{name}/{value}",
+				middleware.WithSign(handlers.FailurePostHandler(), []byte(cfg.Key), logger))
 		})
 		r.Route("/value", func(r chi.Router) {
-			r.Post("/", middleware.WithCompress(handlers.JSONPostHandler(repo, handlers.GetDataFrom), logger))
-			r.Get("/gauge/{name}", handlers.GaugeGetHandler(repo))
-			r.Get("/counter/{name}", handlers.CounterGetHandler(repo))
-			r.Get("/{type}/{name}", handlers.FailureGetHandler())
+			r.Post("/",
+				middleware.WithSign(middleware.WithCompress(handlers.JSONPostHandler(repo, handlers.GetDataFrom), logger),
+					[]byte(cfg.Key), logger))
+			r.Get("/gauge/{name}", middleware.WithSign(handlers.GaugeGetHandler(repo), []byte(cfg.Key), logger))
+			r.Get("/counter/{name}", middleware.WithSign(handlers.CounterGetHandler(repo), []byte(cfg.Key), logger))
+			r.Get("/{type}/{name}", middleware.WithSign(handlers.FailureGetHandler(), []byte(cfg.Key), logger))
 		})
 		r.Route("/ping", func(r chi.Router) {
-			r.Get("/", handlers.DBPingHandler(repo))
+			r.Get("/", middleware.WithSign(handlers.DBPingHandler(repo), []byte(cfg.Key), logger))
 		})
 		r.Route("/updates", func(r chi.Router) {
-			r.Post("/", middleware.WithCompress(handlers.JSONPostHandler(repo, handlers.SetDataTo), logger))
+			r.Post("/",
+				middleware.WithSign(middleware.WithCompress(handlers.JSONPostHandler(repo, handlers.SetDataTo), logger),
+					[]byte(cfg.Key), logger))
 		})
-		r.Post("/", handlers.FailurePostHandler())
-		r.Get("/", middleware.WithCompress(handlers.AllGetHandler(templates.PrepareTemplate(), repo), logger))
+		r.Post("/", middleware.WithSign(handlers.FailurePostHandler(), []byte(cfg.Key), logger))
+		r.Get("/",
+			middleware.WithSign(middleware.WithCompress(handlers.AllGetHandler(templates.PrepareTemplate(), repo), logger),
+				[]byte(cfg.Key), logger))
 	})
 	return r
 }

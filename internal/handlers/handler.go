@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"fmt"
 	"html/template"
 	"io"
 	"net/http"
@@ -195,7 +194,6 @@ func DBPingHandler(repo repository) func(http.ResponseWriter, *http.Request) {
 		ctxPing, cancel := context.WithTimeout(req.Context(), time.Second)
 		defer cancel()
 		if err := repo.Ping(ctxPing); err != nil {
-			fmt.Println("Ping with", err.Error())
 			res.WriteHeader(http.StatusInternalServerError)
 			return
 		}

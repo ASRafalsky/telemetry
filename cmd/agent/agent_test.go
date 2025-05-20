@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,12 +18,14 @@ import (
 	"github.com/ASRafalsky/telemetry/internal/poller"
 	"github.com/ASRafalsky/telemetry/internal/reporter"
 	"github.com/ASRafalsky/telemetry/internal/transport"
+	"github.com/ASRafalsky/telemetry/internal/utils"
 	"github.com/ASRafalsky/telemetry/pkg/log"
 )
 
 func TestAgent(t *testing.T) {
+	key := "really_secret_key"
 	var (
-		gFound, cFound, cJSONFound, gJSONFound bool
+		gFound, cFound, cJSONFound, gJSONFound atomic.Bool
 	)
 
 	// Add handlers and router.
@@ -29,7 +33,7 @@ func TestAgent(t *testing.T) {
 		return func(w http.ResponseWriter, r *http.Request) {
 			require.Equal(t, r.Header.Get("Content-Type"), "text/plain")
 			if chi.URLParam(r, "name") == "RandomValue" {
-				gFound = true
+				gFound.Store(true)
 			}
 		}
 	}
@@ -37,7 +41,7 @@ func TestAgent(t *testing.T) {
 		return func(w http.ResponseWriter, r *http.Request) {
 			require.Equal(t, r.Header.Get("Content-Type"), "text/plain")
 			if chi.URLParam(r, "name") == "PollCount" {
-				cFound = true
+				cFound.Store(true)
 			}
 		}
 	}
@@ -49,6 +53,12 @@ func TestAgent(t *testing.T) {
 				buf []byte
 				err error
 			)
+			body, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			r.Body = io.NopCloser(bytes.NewBuffer(body))
+			utils.SignCheck(t, body, []byte(key), r.Header.Get("HashSHA256"))
+			defer require.NoError(t, r.Body.Close())
+
 			switch r.Header.Get("Content-Encoding") {
 			case "gzip":
 				zr, err := gzip.NewReader(r.Body)
@@ -59,7 +69,6 @@ func TestAgent(t *testing.T) {
 				buf, err = io.ReadAll(r.Body)
 				require.NoError(t, err)
 			}
-			defer require.NoError(t, r.Body.Close())
 			metricList, err := transport.DeserializeMetrics(buf)
 			require.NoError(t, err)
 			require.NotEmpty(t, metricList)
@@ -69,11 +78,11 @@ func TestAgent(t *testing.T) {
 				case counter:
 					require.NotNil(t, m.Delta)
 					require.Nil(t, m.Value)
-					cJSONFound = true
+					cJSONFound.Store(true)
 				case gauge:
 					require.NotNil(t, m.Value)
 					require.Nil(t, m.Delta)
-					gJSONFound = true
+					gJSONFound.Store(true)
 				default:
 				}
 			}
@@ -114,12 +123,12 @@ func TestAgent(t *testing.T) {
 	go poller.Poll(ctx, poller.GetGaugeMetrics, 20*time.Millisecond, gaugeRepo, logeer)
 	go poller.Poll(ctx, poller.GetCounterMetrics, 20*time.Millisecond, counterRepo, logeer)
 
-	go reporter.Send(ctx, srv.URL, gauge, 100*time.Millisecond, client, gaugeRepo, logeer)
-	go reporter.Send(ctx, srv.URL, counter, 100*time.Millisecond, client, counterRepo, logeer)
+	go reporter.Send(ctx, srv.URL, gauge, key, 100*time.Millisecond, client, gaugeRepo, logeer)
+	go reporter.Send(ctx, srv.URL, counter, key, 100*time.Millisecond, client, counterRepo, logeer)
 
 	require.Eventually(t,
 		func() bool {
-			return !gFound && !cFound && gJSONFound && cJSONFound
+			return !gFound.Load() && !cFound.Load() && gJSONFound.Load() && cJSONFound.Load()
 		},
 		200*time.Millisecond, 50*time.Millisecond)
 	cancel()

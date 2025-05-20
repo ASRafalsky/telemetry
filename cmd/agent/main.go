@@ -38,7 +38,7 @@ func main() {
 	go poller.Poll(ctx, poller.GetGaugeMetrics, time.Duration(cfg.PollingPeriod)*time.Second, repo, logger)
 	go poller.Poll(ctx, poller.GetCounterMetrics, time.Duration(cfg.ReportPeriod)*time.Second, repo, logger)
 
-	go reporter.Send(ctx, "http://"+cfg.Addr, "", time.Duration(cfg.ReportPeriod)*time.Second, client, repo, logger)
+	go reporter.Send(ctx, "http://"+cfg.Addr, "", cfg.Key, time.Duration(cfg.ReportPeriod)*time.Second, client, repo, logger)
 
 	<-ctx.Done()
 }

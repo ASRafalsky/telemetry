@@ -14,6 +14,7 @@ type CommonFields struct {
 	Addr     string `env:"ADDRESS" envDefault:":8080"`
 	LogLevel string `env:"LOG_LEVEL" envDefault:"info"`
 	LogPath  string `env:"LOG_PATH" envDefault:""`
+	Key      string `env:"KEY" envDefault:""`
 }
 
 type DB struct {

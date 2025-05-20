@@ -3,6 +3,9 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,17 +19,21 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ASRafalsky/telemetry/internal/cache"
+	"github.com/ASRafalsky/telemetry/internal/config"
 	"github.com/ASRafalsky/telemetry/internal/middleware"
 	"github.com/ASRafalsky/telemetry/internal/repository"
 	"github.com/ASRafalsky/telemetry/internal/transport"
+	"github.com/ASRafalsky/telemetry/internal/utils"
 	"github.com/ASRafalsky/telemetry/pkg/log"
 )
+
+var key = []byte("some_secret_key")
 
 func TestServerStatuses(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
 	repo := repository.NewExtendedRepository(cache.New[string, []byte]())
-	srv := httptest.NewServer(middleware.WithLogging(newRouter(repo, Log), Log))
+	srv := httptest.NewServer(middleware.WithLogging(newRouter(repo, config.Server{}, Log), Log))
 	defer srv.Close()
 
 	header := http.Header{
@@ -195,7 +202,7 @@ func Test_JSON(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
 	repo := repository.NewExtendedRepository(cache.New[string, []byte]())
-	srv := httptest.NewServer(middleware.WithLogging(newRouter(repo, Log), Log))
+	srv := httptest.NewServer(middleware.WithLogging(newRouter(repo, config.Server{}, Log), Log))
 	defer srv.Close()
 
 	// Create a new HTTP client with a default timeout
@@ -475,11 +482,16 @@ func Test_JSON(t *testing.T) {
 	}
 }
 
-func Test_JSON_encoding(t *testing.T) {
+func Test_JSON_encoding_signed(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
 	repo := repository.NewExtendedRepository(cache.New[string, []byte]())
-	srv := httptest.NewServer(middleware.WithLogging(newRouter(repo, Log), Log))
+	cfg := config.Server{
+		CommonFields: config.CommonFields{
+			Key: string(key),
+		},
+	}
+	srv := httptest.NewServer(middleware.WithLogging(newRouter(repo, cfg, Log), Log))
 	defer srv.Close()
 
 	// Create a new HTTP client with a default timeout
@@ -678,11 +690,19 @@ func Test_JSON_encoding(t *testing.T) {
 		t.Run(tc.name+"_response_encoding", func(t *testing.T) {
 			buf, err := easyjson.Marshal(tc.data)
 			require.NoError(t, err)
+			h := hmac.New(sha256.New, key)
+			_, err = h.Write(buf)
+			require.NoError(t, err)
+			header.Set("HashSHA256", hex.EncodeToString(h.Sum(nil)))
 			resp, err := client.Post(tc.url, bytes.NewReader(buf), header)
 			require.NoError(t, err)
 			require.Equal(t, tc.expStatusCode, resp.StatusCode)
 			if tc.expStatusCode == http.StatusOK {
 				require.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				utils.SignCheck(t, body, key, resp.Header.Get("HashSHA256"))
+				resp.Body = io.NopCloser(bytes.NewBuffer(body))
 				zr, err := gzip.NewReader(resp.Body)
 				require.NoError(t, err)
 				buf, err := io.ReadAll(zr)
@@ -706,9 +726,38 @@ func Test_JSON_encoding(t *testing.T) {
 		}
 		require.NoError(t, zr.Close())
 		header.Set("Content-Encoding", "gzip")
+		h := hmac.New(sha256.New, key)
+		_, err = h.Write(bufToSend.Bytes())
+		require.NoError(t, err)
+		header.Set("HashSHA256", hex.EncodeToString(h.Sum(nil)))
 		resp, err := client.Post(srv.URL+"/updates/", bufToSend, header)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		utils.SignCheck(t, body, key, resp.Header.Get("HashSHA256"))
+		resp.Body = io.NopCloser(bytes.NewBuffer(body))
+		require.NoError(t, resp.Body.Close())
+	})
+
+	t.Run("updates_bad_signature", func(t *testing.T) {
+		bufToSend := bytes.NewBuffer(nil)
+		zr := gzip.NewWriter(bufToSend)
+		require.NoError(t, err)
+		for _, tt := range ttJSONUpdate {
+			if tt.url == srv.URL+"/updates/" {
+				require.NoError(t, transport.SerializeMetrics(&tt.data, zr))
+			}
+		}
+		require.NoError(t, zr.Close())
+		header.Set("Content-Encoding", "gzip")
+		h := hmac.New(sha256.New, []byte("kek"))
+		_, err = h.Write(bufToSend.Bytes())
+		require.NoError(t, err)
+		header.Set("HashSHA256", hex.EncodeToString(h.Sum(nil)))
+		resp, err := client.Post(srv.URL+"/updates/", bufToSend, header)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 		require.NoError(t, resp.Body.Close())
 	})
 
@@ -831,10 +880,18 @@ func Test_JSON_encoding(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, zr.Close())
 			header.Set("Content-Encoding", "gzip")
+			h := hmac.New(sha256.New, key)
+			_, err = h.Write(bufToSend.Bytes())
+			require.NoError(t, err)
+			header.Set("HashSHA256", hex.EncodeToString(h.Sum(nil)))
 			resp, err := client.Post(tc.url, bufToSend, header)
 			require.NoError(t, err)
 			require.Equal(t, tc.expStatusCode, resp.StatusCode)
 			if tc.expStatusCode == http.StatusOK {
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				utils.SignCheck(t, body, key, resp.Header.Get("HashSHA256"))
+				resp.Body = io.NopCloser(bytes.NewBuffer(body))
 				require.Equal(t, "application/json", resp.Header.Get("Content-Type"))
 				require.Equal(t, "gzip", resp.Header.Get("Content-Encoding"))
 				zr, err := gzip.NewReader(resp.Body)
@@ -854,7 +911,12 @@ func Test_POST_GET(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
 	repo := repository.NewExtendedRepository(cache.New[string, []byte]())
-	srv := httptest.NewServer(middleware.WithLogging(newRouter(repo, Log), Log))
+	cfg := config.Server{
+		CommonFields: config.CommonFields{
+			Key: string(key),
+		},
+	}
+	srv := httptest.NewServer(middleware.WithLogging(newRouter(repo, cfg, Log), Log))
 	defer srv.Close()
 	// Create a new HTTP client with a default timeout
 	timeout := 1000 * time.Millisecond

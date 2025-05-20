@@ -25,6 +25,7 @@ func updateCfg() (config.Server, error) {
 		dsn             string
 		migrationsPath  string
 		migrationsTable string
+		key             string
 	)
 
 	flag.BoolVar(&restore, "r", false, "need to restore from the dump")
@@ -36,6 +37,7 @@ func updateCfg() (config.Server, error) {
 	flag.StringVar(&dsn, "d", "", "database address")
 	flag.StringVar(&migrationsPath, "m", "", "path to migrations")
 	flag.StringVar(&migrationsTable, "t", "", "name of migration table, where migrator writes own data")
+	flag.StringVar(&key, "k", "", "key for sign")
 	flag.Parse()
 
 	if migrationsPath == "" {
@@ -65,6 +67,9 @@ func updateCfg() (config.Server, error) {
 	}
 	if cfg.DB.DSN == "" {
 		cfg.DB.DSN = dsn
+	}
+	if cfg.Key == "" {
+		cfg.Key = key
 	}
 
 	return cfg, err
