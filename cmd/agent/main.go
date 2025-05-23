@@ -36,9 +36,12 @@ func main() {
 	logger.Info("Agent started with address:", "http://"+cfg.Addr)
 
 	go poller.Poll(ctx, poller.GetGaugeMetrics, time.Duration(cfg.PollingPeriod)*time.Second, repo, logger)
-	go poller.Poll(ctx, poller.GetCounterMetrics, time.Duration(cfg.ReportPeriod)*time.Second, repo, logger)
+	go poller.Poll(ctx, poller.GetCounterMetrics, time.Duration(cfg.PollingPeriod)*time.Second, repo, logger)
+	go poller.Poll(ctx, poller.GetPSMemMetrics, time.Duration(cfg.PollingPeriod)*time.Second, repo, logger)
+	go poller.Poll(ctx, poller.GetPSCPUMetrics, time.Duration(cfg.PollingPeriod)*time.Second, repo, logger)
 
-	go reporter.Send(ctx, "http://"+cfg.Addr, "", cfg.Key, time.Duration(cfg.ReportPeriod)*time.Second, client, repo, logger)
+	go reporter.Send(ctx, "http://"+cfg.Addr, "", cfg.Key, time.Duration(cfg.ReportPeriod)*time.Second,
+		cfg.RateLimit, client, repo, logger)
 
 	<-ctx.Done()
 }

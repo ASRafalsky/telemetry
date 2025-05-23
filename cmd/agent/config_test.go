@@ -17,6 +17,7 @@ func TestUpdateCfg_Default(t *testing.T) {
 		},
 		ReportPeriod:  config.DefaultReportInterval,
 		PollingPeriod: config.DefaultPollInterval,
+		RateLimit:     config.DefaultRateLimit,
 	}
 
 	cfg, err := updateCfg()

@@ -8,6 +8,7 @@ const (
 	DefaultDumpInterval   = 300
 	DefaultReportInterval = 10
 	DefaultPollInterval   = 2
+	DefaultRateLimit      = 0
 )
 
 type CommonFields struct {
@@ -35,4 +36,5 @@ type Agent struct {
 	CommonFields
 	ReportPeriod  int `env:"REPORT_INTERVAL" envDefault:"10"`
 	PollingPeriod int `env:"POLL_INTERVAL" envDefault:"2"`
+	RateLimit     int `env:"RATE_LIMIT" envDefault:"0"`
 }

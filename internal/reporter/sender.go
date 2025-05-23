@@ -9,11 +9,13 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gojek/heimdall/v7/httpclient"
 	"go.uber.org/multierr"
+	"golang.org/x/time/rate"
 
 	"github.com/ASRafalsky/telemetry/internal/transport"
 	"github.com/ASRafalsky/telemetry/internal/types"
@@ -24,18 +26,28 @@ const (
 	counter = "counter"
 )
 
-func Send(ctx context.Context, addr, mType, key string, interval time.Duration, client *httpclient.Client,
-	repo repository, log logger) {
+func Send(ctx context.Context, addr, mType, key string, interval time.Duration, rateLimit int,
+	client *httpclient.Client, repo repository, log logger) {
 	log.Info("Reporeter started with interval:", interval.String())
+	log.Info("Reporeter started with rate limit:", strconv.Itoa(rateLimit))
 
 	sendTimer := time.NewTicker(interval)
 	defer sendTimer.Stop()
 
+	limit := rate.Inf
+	if rateLimit > 0 {
+		limit = rate.Every(time.Second / time.Duration(rateLimit))
+	}
+
+	rl := rate.NewLimiter(limit, 1)
 	for ctx.Err() == nil {
 		select {
 		case <-ctx.Done():
 			return
 		case <-sendTimer.C:
+			if !rl.Allow() {
+				continue
+			}
 			sendCtx, cancel := context.WithTimeout(ctx, interval*90/100) // I'm so sorry)).
 			if err := withRetryOnErr(sendCtx, 3, func() error {
 				return sendJSONData(ctx, addr, "", key, repo, client)

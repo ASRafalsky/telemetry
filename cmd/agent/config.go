@@ -19,14 +19,16 @@ func updateCfg() (config.Agent, error) {
 		key           string
 		reportPeriod  int
 		pollingPeriod int
+		rateLimit     int
 	)
 
 	flag.StringVar(&addr, "a", config.DefaultAddr, "address and port to run agent")
-	flag.StringVar(&loglevel, "l", config.DefaultLogLevel, "log level")
+	flag.StringVar(&loglevel, "ll", config.DefaultLogLevel, "log level")
 	flag.StringVar(&logPath, "f", "", "log file path")
 	flag.StringVar(&key, "k", "", "key for sign")
 	flag.IntVar(&reportPeriod, "r", config.DefaultReportInterval, "send data time interval")
 	flag.IntVar(&pollingPeriod, "p", config.DefaultPollInterval, "get data time interval")
+	flag.IntVar(&rateLimit, "l", config.DefaultRateLimit, "rate limit")
 	flag.Parse()
 
 	if cfg.Addr == config.DefaultAddr {
@@ -46,6 +48,9 @@ func updateCfg() (config.Agent, error) {
 	}
 	if cfg.Key == "" {
 		cfg.Key = key
+	}
+	if cfg.RateLimit == config.DefaultRateLimit {
+		cfg.RateLimit = rateLimit
 	}
 
 	return cfg, err

@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -25,7 +27,8 @@ import (
 func TestAgent(t *testing.T) {
 	key := "really_secret_key"
 	var (
-		gFound, cFound, cJSONFound, gJSONFound atomic.Bool
+		gFound, cFound, cJSONFound, gJSONFound, psMemFound atomic.Bool
+		psCPUCnt, gSendCnt, cSendCnt                       atomic.Int64
 	)
 
 	// Add handlers and router.
@@ -79,10 +82,18 @@ func TestAgent(t *testing.T) {
 					require.NotNil(t, m.Delta)
 					require.Nil(t, m.Value)
 					cJSONFound.Store(true)
+					cSendCnt.Add(1)
 				case gauge:
 					require.NotNil(t, m.Value)
 					require.Nil(t, m.Delta)
 					gJSONFound.Store(true)
+					if strings.Contains(m.ID, "Memory") {
+						psMemFound.Store(true)
+					}
+					if strings.Contains(m.ID, "CPUutilization") {
+						psCPUCnt.Add(1)
+					}
+					gSendCnt.Add(1)
 				default:
 				}
 			}
@@ -120,16 +131,24 @@ func TestAgent(t *testing.T) {
 	logeer, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
 
-	go poller.Poll(ctx, poller.GetGaugeMetrics, 20*time.Millisecond, gaugeRepo, logeer)
-	go poller.Poll(ctx, poller.GetCounterMetrics, 20*time.Millisecond, counterRepo, logeer)
+	go poller.Poll(ctx, poller.GetGaugeMetrics, 10*time.Millisecond, gaugeRepo, logeer)
+	go poller.Poll(ctx, poller.GetPSMemMetrics, 10*time.Millisecond, gaugeRepo, logeer)
+	go poller.Poll(ctx, poller.GetPSCPUMetrics, 10*time.Millisecond, gaugeRepo, logeer)
+	go poller.Poll(ctx, poller.GetCounterMetrics, 10*time.Millisecond, counterRepo, logeer)
 
-	go reporter.Send(ctx, srv.URL, gauge, key, 100*time.Millisecond, client, gaugeRepo, logeer)
-	go reporter.Send(ctx, srv.URL, counter, key, 100*time.Millisecond, client, counterRepo, logeer)
+	go reporter.Send(ctx, srv.URL, gauge, key, 100*time.Millisecond, 1, client, gaugeRepo, logeer)
+	go reporter.Send(ctx, srv.URL, counter, key, 100*time.Millisecond, 4, client, counterRepo, logeer)
 
 	require.Eventually(t,
 		func() bool {
-			return !gFound.Load() && !cFound.Load() && gJSONFound.Load() && cJSONFound.Load()
+			return !gFound.Load() && !cFound.Load() && gJSONFound.Load() && cJSONFound.Load() && psMemFound.Load() &&
+				psCPUCnt.Load() == int64(runtime.NumCPU())
 		},
 		200*time.Millisecond, 50*time.Millisecond)
+
+	time.Sleep(890 * time.Millisecond)
+
+	require.Equal(t, int64(gaugeRepo.Size()), gSendCnt.Load())
+	require.Equal(t, int64(counterRepo.Size())*4, cSendCnt.Load())
 	cancel()
 }
