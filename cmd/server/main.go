@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -34,7 +34,7 @@ func main() {
 	Log.Info("Starting telemetry server", cfg.Addr, cfg.LogLevel, cfg.DumpPath)
 	repo := repository.NewExtendedRepository(cache.New[string, []byte]())
 
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer cancel()
 
 	if db, err := initDB(ctx, cfg.DB, *Log); err == nil {
@@ -49,6 +49,8 @@ func main() {
 	repo.Maintain(ctx, cfg, *Log)
 
 	runServer(ctx, cancel, repo, cfg, Log)
+
+	Log.Info("Telemetry Server stopped.")
 }
 
 func runServer(ctx context.Context, cancel context.CancelFunc, repo dataRepository, cfg config.Server, logger *log.Logger) {
@@ -60,13 +62,17 @@ func runServer(ctx context.Context, cancel context.CancelFunc, repo dataReposito
 	}
 
 	go func() {
-		if err := srv.ListenAndServe(); err != nil {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Fatal("Failed to start server:", err.Error())
-			cancel()
 		}
+		cancel()
 	}()
 
 	<-ctx.Done()
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		logger.Info("Stopping server by cause:", ctxErr.Error())
+	}
+
 	srvCtx, srvCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer srvCancel()
 	if err := srv.Shutdown(srvCtx); err != nil {
