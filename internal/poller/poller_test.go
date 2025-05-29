@@ -69,10 +69,15 @@ func TestPoll(t *testing.T) {
 
 	log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
-	go Poll(ctx, GetGaugeMetrics, time.Duration(100)*time.Millisecond, repo, log)
-	go Poll(ctx, GetCounterMetrics, time.Duration(100)*time.Millisecond, repo, log)
-	go Poll(ctx, GetPSMemMetrics, time.Duration(100)*time.Millisecond, repo, log)
-	go Poll(ctx, GetPSCPUMetrics, time.Duration(100)*time.Millisecond, repo, log)
+
+	cfg := Config{
+		Interval: time.Duration(100) * time.Millisecond,
+	}
+
+	go Poll(ctx, GetGaugeMetrics, cfg, repo, log)
+	go Poll(ctx, GetCounterMetrics, cfg, repo, log)
+	go Poll(ctx, GetPSMemMetrics, cfg, repo, log)
+	go Poll(ctx, GetPSCPUMetrics, cfg, repo, log)
 
 	// Wait 90 ms, it is too early to have any data.
 	time.Sleep(90 * time.Millisecond)

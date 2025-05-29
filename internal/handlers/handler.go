@@ -231,11 +231,3 @@ type repository interface {
 	Ping(ctx context.Context) error
 	Size() (int, error)
 }
-
-type logger interface {
-	Info(msg ...string)
-	Warn(msg ...string)
-	Error(msg ...string)
-	Debug(msg ...string)
-	Fatal(msg ...string)
-}

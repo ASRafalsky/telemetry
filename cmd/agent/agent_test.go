@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ASRafalsky/telemetry/internal/cache"
+	"github.com/ASRafalsky/telemetry/internal/config"
 	"github.com/ASRafalsky/telemetry/internal/poller"
 	"github.com/ASRafalsky/telemetry/internal/reporter"
 	"github.com/ASRafalsky/telemetry/internal/transport"
@@ -131,13 +132,32 @@ func TestAgent(t *testing.T) {
 	logeer, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
 
-	go poller.Poll(ctx, poller.GetGaugeMetrics, 10*time.Millisecond, gaugeRepo, logeer)
-	go poller.Poll(ctx, poller.GetPSMemMetrics, 10*time.Millisecond, gaugeRepo, logeer)
-	go poller.Poll(ctx, poller.GetPSCPUMetrics, 10*time.Millisecond, gaugeRepo, logeer)
-	go poller.Poll(ctx, poller.GetCounterMetrics, 10*time.Millisecond, counterRepo, logeer)
+	pollCfg := poller.Config{
+		Interval: time.Duration(10) * time.Millisecond,
+	}
+	go poller.Poll(ctx, poller.GetGaugeMetrics, pollCfg, gaugeRepo, logeer)
+	go poller.Poll(ctx, poller.GetPSMemMetrics, pollCfg, gaugeRepo, logeer)
+	go poller.Poll(ctx, poller.GetPSCPUMetrics, pollCfg, gaugeRepo, logeer)
+	go poller.Poll(ctx, poller.GetCounterMetrics, pollCfg, counterRepo, logeer)
 
-	go reporter.Send(ctx, srv.URL, gauge, key, 100*time.Millisecond, 1, client, gaugeRepo, logeer)
-	go reporter.Send(ctx, srv.URL, counter, key, 100*time.Millisecond, 4, client, counterRepo, logeer)
+	senderCfg1 := newSenderCfg(config.Agent{
+		CommonFields: config.CommonFields{
+			Addr: srv.URL,
+			Key:  key,
+		},
+		RateLimit: 1,
+	})
+	senderCfg1.Interval = time.Duration(100) * time.Millisecond
+	senderCfg2 := newSenderCfg(config.Agent{
+		CommonFields: config.CommonFields{
+			Addr: srv.URL,
+			Key:  key,
+		},
+		RateLimit: 4,
+	})
+	senderCfg2.Interval = time.Duration(100) * time.Millisecond
+	go reporter.Send(ctx, gauge, senderCfg1, client, gaugeRepo, logeer)
+	go reporter.Send(ctx, counter, senderCfg2, client, counterRepo, logeer)
 
 	require.Eventually(t,
 		func() bool {

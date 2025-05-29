@@ -18,10 +18,14 @@ const (
 	counter = "counter"
 )
 
+type Config struct {
+	Interval time.Duration
+}
+
 func Poll(ctx context.Context,
-	fn func(ctx context.Context, r repository) error, interval time.Duration, repo repository, log logger) {
-	log.Info("Polling started with interval:", interval.String())
-	pollTimer := time.NewTicker(interval)
+	fn func(ctx context.Context, r repository) error, cfg Config, repo repository, log logger) {
+	log.Info("Polling started with interval:", cfg.Interval.String())
+	pollTimer := time.NewTicker(cfg.Interval)
 	defer pollTimer.Stop()
 
 	for ctx.Err() == nil {

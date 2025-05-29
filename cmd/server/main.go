@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
@@ -31,7 +34,9 @@ func main() {
 	Log.Info("Starting telemetry server", cfg.Addr, cfg.LogLevel, cfg.DumpPath)
 	repo := repository.NewExtendedRepository(cache.New[string, []byte]())
 
-	ctx := context.Background()
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
 	if db, err := initDB(ctx, cfg.DB, *Log); err == nil {
 		repo.UseDB(db)
 		defer func() {
@@ -47,6 +52,8 @@ func main() {
 	Log.Fatal("Failed to start server:" +
 		zap.String("err:",
 			http.ListenAndServe(cfg.Addr, middleware.WithLogging(newRouter(repo, cfg, Log), Log)).Error()).String)
+
+	Log.Info("Server stopped")
 }
 
 func newRouter(repo dataRepository, cfg config.Server, logger *log.Logger) http.Handler {

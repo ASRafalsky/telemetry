@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -26,21 +27,27 @@ const (
 	counter = "counter"
 )
 
-func Send(ctx context.Context, addr, mType, key string, interval time.Duration, rateLimit int,
-	client *httpclient.Client, repo repository, log logger) {
-	log.Info("Reporeter started with interval:", interval.String())
-	log.Info("Reporeter started with rate limit:", strconv.Itoa(rateLimit))
+type Config struct {
+	Key       string
+	Address   string
+	RateLimit int
+	Interval  time.Duration
+}
 
-	sendTimer := time.NewTicker(interval)
+func Send(ctx context.Context, mType string, cfg Config, client *httpclient.Client, repo repository, log logger) {
+	log.Info("Reporeter started with interval:", cfg.Interval.String())
+	log.Info("Reporeter started with rate limit:", strconv.Itoa(cfg.RateLimit))
+
+	sendTimer := time.NewTicker(cfg.Interval)
 	defer sendTimer.Stop()
 
 	limit := rate.Inf
-	if rateLimit > 0 {
-		limit = rate.Every(time.Second / time.Duration(rateLimit))
+	if cfg.RateLimit > 0 {
+		limit = rate.Every(time.Second / time.Duration(cfg.RateLimit))
 	}
 
 	rl := rate.NewLimiter(limit, 1)
-	for ctx.Err() == nil {
+	for {
 		select {
 		case <-ctx.Done():
 			return
@@ -48,48 +55,44 @@ func Send(ctx context.Context, addr, mType, key string, interval time.Duration, 
 			if !rl.Allow() {
 				continue
 			}
-			sendCtx, cancel := context.WithTimeout(ctx, interval*90/100) // I'm so sorry)).
+			sendCtx, cancel := context.WithTimeout(ctx, cfg.Interval*90/100) // I'm so sorry)).
+
+			var bufToSend = bytes.NewBuffer(nil)
+
+			zw := gzip.NewWriter(bufToSend)
+			err := serializeMetrics(ctx, "", repo, zw)
+			if errZw := zw.Close(); errZw != nil || err != nil {
+				err = multierr.Append(err, fmt.Errorf("failed to close gzip writer: %w", errZw))
+				log.Error("[send/json] failed to serialize metrics for", mType, err.Error())
+				cancel()
+				continue
+			}
+			header := http.Header{
+				"Content-Type": []string{"application/json"},
+			}
+			header.Set("Content-Encoding", "gzip")
+
+			if signature, err := sign(bufToSend.Bytes(), []byte(cfg.Key)); err != nil {
+				log.Error("[send/json] failed to sign data for", mType, err.Error())
+				cancel()
+				continue
+			} else {
+				header.Set("HashSHA256", signature)
+			}
+
 			if err := withRetryOnErr(sendCtx, 3, func() error {
-				return sendJSONData(ctx, addr, "", key, repo, client)
+				return sendDataTo("/updates/", cfg, header, bufToSend, client)
 			}); err != nil {
-				log.Error("[send/json] failed to send data] for", mType, ":", err.Error())
+				log.Error("[send/json] failed to send data] for", mType, err.Error())
 			}
 			cancel()
 		}
 	}
 }
 
-func sendJSONData(ctx context.Context, addr, mtype, key string, repo repository, client *httpclient.Client) (err error) {
-	header := http.Header{
-		"Content-Type": []string{"application/json"},
-	}
-
-	var bufToSend = bytes.NewBuffer(nil)
-
-	zw := gzip.NewWriter(bufToSend)
-	err = serializeMetrics(ctx, mtype, repo, zw)
-	if errZw := zw.Close(); errZw != nil {
-		err = multierr.Append(err, fmt.Errorf("failed to close gzip writer: %w", errZw))
-	}
-	if bufToSend.Len() == 0 {
-		if err != nil {
-			return err
-		}
-		return nil
-	}
-
-	if key != "" {
-		h := hmac.New(sha256.New, []byte(key))
-		if _, err = h.Write(bufToSend.Bytes()); err != nil {
-			return err
-		}
-		header.Set("HashSHA256", hex.EncodeToString(h.Sum(nil)))
-	}
-
-	header.Set("Content-Encoding", "gzip")
-	resp, errPost := client.Post(addr+"/updates/", bufToSend, header)
-	if errPost != nil {
-		err = multierr.Append(err, fmt.Errorf("failed to post update: %w", errPost))
+func sendDataTo(dst string, cfg Config, header http.Header, r io.Reader, client *httpclient.Client) (err error) {
+	resp, err := client.Post(cfg.Address+dst, r, header)
+	if err != nil {
 		return err
 	}
 	defer func() {
@@ -99,9 +102,20 @@ func sendJSONData(ctx context.Context, addr, mtype, key string, repo repository,
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		err = multierr.Append(err, fmt.Errorf("bad status for %s: %s", mtype, resp.Status))
+		err = multierr.Append(err, fmt.Errorf("bad status: %s", resp.Status))
 	}
 	return err
+}
+
+func sign(data []byte, key []byte) (string, error) {
+	if len(key) == 0 {
+		return "", nil
+	}
+	h := hmac.New(sha256.New, key)
+	if _, err := h.Write(data); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func sendCounterData(ctx context.Context, addr string, repo repository, client *httpclient.Client) error {
