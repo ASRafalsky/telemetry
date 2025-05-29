@@ -142,12 +142,12 @@ func TestAgent(t *testing.T) {
 
 	senderCfg1 := newSenderCfg(config.Agent{
 		CommonFields: config.CommonFields{
-			Addr: srv.URL,
-			Key:  key,
+			Key: key,
 		},
 		RateLimit: 1,
 	})
 	senderCfg1.Interval = time.Duration(100) * time.Millisecond
+	senderCfg1.Address = srv.URL
 	senderCfg2 := newSenderCfg(config.Agent{
 		CommonFields: config.CommonFields{
 			Addr: srv.URL,
@@ -156,6 +156,7 @@ func TestAgent(t *testing.T) {
 		RateLimit: 4,
 	})
 	senderCfg2.Interval = time.Duration(100) * time.Millisecond
+	senderCfg2.Address = srv.URL
 	go reporter.Send(ctx, gauge, senderCfg1, client, gaugeRepo, logeer)
 	go reporter.Send(ctx, counter, senderCfg2, client, counterRepo, logeer)
 

@@ -35,7 +35,7 @@ func newPollerCfg(cfg config.Agent) poller.Config {
 func newSenderCfg(cfg config.Agent) reporter.Config {
 	return reporter.Config{
 		Interval:  time.Duration(cfg.ReportPeriod) * time.Second,
-		Address:   cfg.Addr,
+		Address:   "http://" + cfg.Addr,
 		Key:       cfg.Key,
 		RateLimit: cfg.RateLimit,
 	}
