@@ -7,11 +7,13 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gojek/heimdall/v7/httpclient"
@@ -231,7 +233,11 @@ func dataToMetrics(mtype, name string, d []byte) (transport.Metrics, error) {
 func withRetryOnErr(ctx context.Context, cnt int, fn func() error) error {
 	cnt--
 	err := fn()
-	if err != nil && strings.Contains(err.Error(), "connection refused") {
+	if err != nil && (errors.Is(err, syscall.ECONNREFUSED) ||
+		strings.Contains(err.Error(), "connection refused") ||
+		strings.Contains(err.Error(), "unreachable") ||
+		strings.Contains(err.Error(), "no route to host") ||
+		strings.Contains(err.Error(), "invalid argument")) {
 		wait := 1
 		ticker := time.NewTicker(time.Duration(wait) * time.Second)
 		defer ticker.Stop()
