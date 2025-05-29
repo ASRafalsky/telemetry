@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/go-chi/chi/v5"
-	"go.uber.org/zap"
 
 	"github.com/ASRafalsky/telemetry/internal/cache"
 	"github.com/ASRafalsky/telemetry/internal/config"
@@ -31,7 +34,8 @@ func main() {
 	Log.Info("Starting telemetry server", cfg.Addr, cfg.LogLevel, cfg.DumpPath)
 	repo := repository.NewExtendedRepository(cache.New[string, []byte]())
 
-	ctx := context.Background()
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+	defer cancel()
 
 	if db, err := initDB(ctx, cfg.DB, *Log); err == nil {
 		repo.UseDB(db)
@@ -44,10 +48,31 @@ func main() {
 
 	repo.Maintain(ctx, cfg, *Log)
 
-	Log.Info("Starting server", cfg.Addr)
-	Log.Fatal("Failed to start server:" +
-		zap.String("err:",
-			http.ListenAndServe(cfg.Addr, middleware.WithLogging(newRouter(repo, cfg, Log), Log)).Error()).String)
+	runServer(ctx, cancel, repo, cfg, Log)
+}
+
+func runServer(ctx context.Context, cancel context.CancelFunc, repo dataRepository, cfg config.Server, logger *log.Logger) {
+	logger.Info("Starting server", cfg.Addr)
+
+	srv := http.Server{
+		Addr:    cfg.Addr,
+		Handler: middleware.WithLogging(newRouter(repo, cfg, logger), logger),
+	}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil {
+			logger.Fatal("Failed to start server:", err.Error())
+			cancel()
+		}
+	}()
+
+	<-ctx.Done()
+	srvCtx, srvCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer srvCancel()
+	if err := srv.Shutdown(srvCtx); err != nil {
+		logger.Fatal("Failed to shutdown server:", err.Error())
+	}
+	logger.Info("Server shutdown completed")
 }
 
 func newRouter(repo dataRepository, cfg config.Server, logger *log.Logger) http.Handler {
