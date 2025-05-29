@@ -36,8 +36,6 @@ func main() {
 
 	ctx, cancel := signal.NotifyContext(context.Background(),
 		syscall.SIGTERM,
-		syscall.SIGINT,
-		syscall.SIGQUIT,
 	)
 	defer cancel()
 
