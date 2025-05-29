@@ -49,6 +49,9 @@ func (m *MemStorage[K, V]) Delete(k K) {
 
 // Size returns number of items in the MemStorage.
 func (m *MemStorage[K, V]) Size() int {
+	m.mx.RLock()
+	defer m.mx.RUnlock()
+
 	return len(m.storage)
 }
 
