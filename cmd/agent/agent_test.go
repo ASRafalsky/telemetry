@@ -1,27 +1,35 @@
 package main
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ASRafalsky/telemetry/internal/cache"
+	"github.com/ASRafalsky/telemetry/internal/config"
 	"github.com/ASRafalsky/telemetry/internal/poller"
 	"github.com/ASRafalsky/telemetry/internal/reporter"
 	"github.com/ASRafalsky/telemetry/internal/transport"
+	"github.com/ASRafalsky/telemetry/internal/utils"
+	"github.com/ASRafalsky/telemetry/pkg/cache"
 	"github.com/ASRafalsky/telemetry/pkg/log"
 )
 
 func TestAgent(t *testing.T) {
+	key := "really_secret_key"
 	var (
-		gFound, cFound, cJSONFound, gJSONFound bool
+		gFound, cFound, cJSONFound, gJSONFound, psMemFound atomic.Bool
+		psCPUCnt, gSendCnt, cSendCnt                       atomic.Int64
 	)
 
 	// Add handlers and router.
@@ -29,7 +37,7 @@ func TestAgent(t *testing.T) {
 		return func(w http.ResponseWriter, r *http.Request) {
 			require.Equal(t, r.Header.Get("Content-Type"), "text/plain")
 			if chi.URLParam(r, "name") == "RandomValue" {
-				gFound = true
+				gFound.Store(true)
 			}
 		}
 	}
@@ -37,7 +45,7 @@ func TestAgent(t *testing.T) {
 		return func(w http.ResponseWriter, r *http.Request) {
 			require.Equal(t, r.Header.Get("Content-Type"), "text/plain")
 			if chi.URLParam(r, "name") == "PollCount" {
-				cFound = true
+				cFound.Store(true)
 			}
 		}
 	}
@@ -49,6 +57,12 @@ func TestAgent(t *testing.T) {
 				buf []byte
 				err error
 			)
+			body, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			r.Body = io.NopCloser(bytes.NewBuffer(body))
+			utils.SignCheck(t, body, []byte(key), r.Header.Get("HashSHA256"))
+			defer require.NoError(t, r.Body.Close())
+
 			switch r.Header.Get("Content-Encoding") {
 			case "gzip":
 				zr, err := gzip.NewReader(r.Body)
@@ -59,7 +73,6 @@ func TestAgent(t *testing.T) {
 				buf, err = io.ReadAll(r.Body)
 				require.NoError(t, err)
 			}
-			defer require.NoError(t, r.Body.Close())
 			metricList, err := transport.DeserializeMetrics(buf)
 			require.NoError(t, err)
 			require.NotEmpty(t, metricList)
@@ -69,11 +82,19 @@ func TestAgent(t *testing.T) {
 				case counter:
 					require.NotNil(t, m.Delta)
 					require.Nil(t, m.Value)
-					cJSONFound = true
+					cJSONFound.Store(true)
+					cSendCnt.Add(1)
 				case gauge:
 					require.NotNil(t, m.Value)
 					require.Nil(t, m.Delta)
-					gJSONFound = true
+					gJSONFound.Store(true)
+					if strings.Contains(m.ID, "Memory") {
+						psMemFound.Store(true)
+					}
+					if strings.Contains(m.ID, "CPUutilization") {
+						psCPUCnt.Add(1)
+					}
+					gSendCnt.Add(1)
 				default:
 				}
 			}
@@ -111,16 +132,44 @@ func TestAgent(t *testing.T) {
 	logeer, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
 
-	go poller.Poll(ctx, poller.GetGaugeMetrics, 20*time.Millisecond, gaugeRepo, logeer)
-	go poller.Poll(ctx, poller.GetCounterMetrics, 20*time.Millisecond, counterRepo, logeer)
+	pollCfg := poller.Config{
+		Interval: time.Duration(10) * time.Millisecond,
+	}
+	go poller.Poll(ctx, poller.GetGaugeMetrics, pollCfg, gaugeRepo, logeer)
+	go poller.Poll(ctx, poller.GetPSMemMetrics, pollCfg, gaugeRepo, logeer)
+	go poller.Poll(ctx, poller.GetPSCPUMetrics, pollCfg, gaugeRepo, logeer)
+	go poller.Poll(ctx, poller.GetCounterMetrics, pollCfg, counterRepo, logeer)
 
-	go reporter.Send(ctx, srv.URL, gauge, 100*time.Millisecond, client, gaugeRepo, logeer)
-	go reporter.Send(ctx, srv.URL, counter, 100*time.Millisecond, client, counterRepo, logeer)
+	senderCfg1 := newSenderCfg(config.Agent{
+		CommonFields: config.CommonFields{
+			Key: key,
+		},
+		RateLimit: 1,
+	})
+	senderCfg1.Interval = time.Duration(100) * time.Millisecond
+	senderCfg1.Address = srv.URL
+	senderCfg2 := newSenderCfg(config.Agent{
+		CommonFields: config.CommonFields{
+			Addr: srv.URL,
+			Key:  key,
+		},
+		RateLimit: 4,
+	})
+	senderCfg2.Interval = time.Duration(100) * time.Millisecond
+	senderCfg2.Address = srv.URL
+	go reporter.Send(ctx, gauge, senderCfg1, client, gaugeRepo, logeer)
+	go reporter.Send(ctx, counter, senderCfg2, client, counterRepo, logeer)
 
 	require.Eventually(t,
 		func() bool {
-			return !gFound && !cFound && gJSONFound && cJSONFound
+			return !gFound.Load() && !cFound.Load() && gJSONFound.Load() && cJSONFound.Load() && psMemFound.Load() &&
+				psCPUCnt.Load() == int64(runtime.NumCPU())
 		},
 		200*time.Millisecond, 50*time.Millisecond)
+
+	time.Sleep(890 * time.Millisecond)
+
+	require.Equal(t, int64(gaugeRepo.Size()), gSendCnt.Load())
+	require.Equal(t, int64(counterRepo.Size())*4, cSendCnt.Load())
 	cancel()
 }

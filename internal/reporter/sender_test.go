@@ -1,6 +1,7 @@
 package reporter
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
 	"io"
@@ -13,15 +14,17 @@ import (
 	"github.com/gojek/heimdall/v7/httpclient"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ASRafalsky/telemetry/internal/cache"
 	"github.com/ASRafalsky/telemetry/internal/transport"
 	"github.com/ASRafalsky/telemetry/internal/types"
+	"github.com/ASRafalsky/telemetry/internal/utils"
+	"github.com/ASRafalsky/telemetry/pkg/cache"
 )
 
 const (
 	testValStr   = "1234"
 	testValInt64 = int64(1234)
 	testValFloat = float64(1234)
+	secretKey    = "secret"
 )
 
 func TestSend(t *testing.T) {
@@ -55,6 +58,10 @@ func TestSend(t *testing.T) {
 				buf []byte
 				err error
 			)
+			body, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			r.Body = io.NopCloser(bytes.NewBuffer(body))
+			utils.SignCheck(t, body, []byte(secretKey), r.Header.Get("HashSHA256"))
 			switch r.Header.Get("Content-Encoding") {
 			case "gzip":
 				zr, err := gzip.NewReader(r.Body)
@@ -134,14 +141,21 @@ func TestSend(t *testing.T) {
 			return gFound
 		},
 		200*time.Millisecond, 50*time.Millisecond)
+
 	require.NoError(t, sendCounterData(context.Background(), srv.URL, repo, client))
 	require.Eventually(t,
 		func() bool {
 			return cFound
 		},
 		200*time.Millisecond, 50*time.Millisecond)
-	require.NoError(t,
-		sendJSONData(context.Background(), srv.URL, counter, repo, client))
+
+	cfg := Config{
+		Address: srv.URL,
+		Key:     secretKey,
+	}
+
+	header, data := prepareData(t, repo, counter, secretKey)
+	require.NoError(t, sendDataTo("/updates/", cfg, header, data, client))
 	require.Eventually(t,
 		func() bool {
 			return cJSONFound
@@ -150,8 +164,9 @@ func TestSend(t *testing.T) {
 
 	repo.Set(gauge+"_var1", types.GaugeToBytes(gaugeData))
 	repo.Set(gauge+"_var2", types.GaugeToBytes(gaugeData))
-	require.NoError(t,
-		sendJSONData(context.Background(), srv.URL, gauge, repo, client))
+
+	header, data = prepareData(t, repo, gauge, secretKey)
+	require.NoError(t, sendDataTo("/updates/", cfg, header, data, client))
 	require.Eventually(t,
 		func() bool {
 			return gJSONFound
@@ -161,12 +176,30 @@ func TestSend(t *testing.T) {
 	cJSONFound, gJSONFound = false, false
 
 	// After sending gauge entries have been dropped.
-	require.NoError(t,
-		sendJSONData(context.Background(), srv.URL, "", repo, client))
+	header, data = prepareData(t, repo, "", secretKey)
+	require.NoError(t, sendDataTo("/updates/", cfg, header, data, client))
 
 	require.Eventually(t,
 		func() bool {
 			return !gJSONFound && cJSONFound
 		},
 		200*time.Millisecond, 50*time.Millisecond)
+}
+
+func prepareData(t *testing.T, repo repository, mType, key string) (http.Header, io.Reader) {
+	t.Helper()
+	var bufToSend = bytes.NewBuffer(nil)
+
+	zw := gzip.NewWriter(bufToSend)
+	require.NoError(t, serializeMetrics(context.Background(), mType, repo, zw))
+	require.NoError(t, zw.Close())
+	header := http.Header{
+		"Content-Type":     []string{"application/json"},
+		"Content-Encoding": []string{"gzip"},
+	}
+
+	signature, err := sign(bufToSend.Bytes(), []byte(key))
+	require.NoError(t, err)
+	header.Set("HashSHA256", signature)
+	return header, bufToSend
 }

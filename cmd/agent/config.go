@@ -2,46 +2,41 @@ package main
 
 import (
 	"flag"
+	"time"
 
 	"github.com/caarlos0/env/v10"
 
 	"github.com/ASRafalsky/telemetry/internal/config"
+	"github.com/ASRafalsky/telemetry/internal/poller"
+	"github.com/ASRafalsky/telemetry/internal/reporter"
 )
 
 func updateCfg() (config.Agent, error) {
 	cfg := config.Agent{}
-	err := env.Parse(&cfg)
-
-	var (
-		addr          string
-		loglevel      string
-		logPath       string
-		reportPeriod  int
-		pollingPeriod int
-	)
-
-	flag.StringVar(&addr, "a", config.DefaultAddr, "address and port to run agent")
-	flag.StringVar(&loglevel, "l", config.DefaultLogLevel, "log level")
-	flag.StringVar(&logPath, "f", "", "log file path")
-	flag.IntVar(&reportPeriod, "r", config.DefaultReportInterval, "send data time interval")
-	flag.IntVar(&pollingPeriod, "p", config.DefaultPollInterval, "get data time interval")
+	flag.StringVar(&cfg.Addr, "a", config.DefaultAddr, "address and port to run agent")
+	flag.StringVar(&cfg.LogLevel, "ll", config.DefaultLogLevel, "log level")
+	flag.StringVar(&cfg.LogPath, "f", "", "log file path")
+	flag.StringVar(&cfg.Key, "k", "", "key for sign")
+	flag.IntVar(&cfg.ReportPeriod, "r", config.DefaultReportInterval, "send data time interval")
+	flag.IntVar(&cfg.PollingPeriod, "p", config.DefaultPollInterval, "get data time interval")
+	flag.IntVar(&cfg.RateLimit, "l", config.DefaultRateLimit, "rate limit")
 	flag.Parse()
 
-	if cfg.Addr == config.DefaultAddr {
-		cfg.Addr = addr
-	}
-	if cfg.LogLevel == config.DefaultLogLevel {
-		cfg.LogLevel = loglevel
-	}
-	if cfg.LogPath == "" {
-		cfg.LogPath = logPath
-	}
-	if cfg.ReportPeriod == config.DefaultReportInterval {
-		cfg.ReportPeriod = reportPeriod
-	}
-	if cfg.PollingPeriod == config.DefaultPollInterval {
-		cfg.PollingPeriod = pollingPeriod
-	}
-
+	err := env.Parse(&cfg)
 	return cfg, err
+}
+
+func newPollerCfg(cfg config.Agent) poller.Config {
+	return poller.Config{
+		Interval: time.Duration(cfg.PollingPeriod) * time.Second,
+	}
+}
+
+func newSenderCfg(cfg config.Agent) reporter.Config {
+	return reporter.Config{
+		Interval:  time.Duration(cfg.ReportPeriod) * time.Second,
+		Address:   "http://" + cfg.Addr,
+		Key:       cfg.Key,
+		RateLimit: cfg.RateLimit,
+	}
 }

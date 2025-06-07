@@ -4,7 +4,11 @@ import (
 	"context"
 	"math/rand/v2"
 	"runtime"
+	"strconv"
 	"time"
+
+	"github.com/shirou/gopsutil/v4/cpu"
+	"github.com/shirou/gopsutil/v4/mem"
 
 	"github.com/ASRafalsky/telemetry/internal/types"
 )
@@ -14,9 +18,14 @@ const (
 	counter = "counter"
 )
 
-func Poll(ctx context.Context, fn func(r repository), interval time.Duration, repo repository, log logger) {
-	log.Info("Polling started with interval:", interval.String())
-	pollTimer := time.NewTicker(interval)
+type Config struct {
+	Interval time.Duration
+}
+
+func Poll(ctx context.Context,
+	fn func(ctx context.Context, r repository) error, cfg Config, repo repository, log logger) {
+	log.Info("Polling started with interval:", cfg.Interval.String())
+	pollTimer := time.NewTicker(cfg.Interval)
 	defer pollTimer.Stop()
 
 	for ctx.Err() == nil {
@@ -24,24 +33,27 @@ func Poll(ctx context.Context, fn func(r repository), interval time.Duration, re
 		case <-ctx.Done():
 			return
 		case <-pollTimer.C:
-			fn(repo)
+			if err := fn(ctx, repo); err != nil {
+				log.Error("Polling failed with err.", err.Error())
+			}
 		}
 	}
 }
 
-func GetCounterMetrics(repo repository) {
+func GetCounterMetrics(_ context.Context, repo repository) error {
 	name := counter + "PollCount"
 	cnt, ok := repo.Get(name)
 	if !ok {
 		repo.Set(name, types.CounterToBytes(types.Counter(0)))
-		return
+		return nil
 	}
 	cntToSet := types.BytesToCounter(cnt)
 	cntToSet++
 	repo.Set(name, types.CounterToBytes(cntToSet))
+	return nil
 }
 
-func GetGaugeMetrics(repo repository) {
+func GetGaugeMetrics(_ context.Context, repo repository) error {
 	memStats := runtime.MemStats{}
 	runtime.ReadMemStats(&memStats)
 
@@ -73,6 +85,28 @@ func GetGaugeMetrics(repo repository) {
 	repo.Set(gauge+"Sys", types.GaugeToBytes(types.Gauge(memStats.Sys)))
 	repo.Set(gauge+"TotalAlloc", types.GaugeToBytes(types.Gauge(memStats.TotalAlloc)))
 	repo.Set(gauge+"RandomValue", types.GaugeToBytes(types.Gauge(rand.Float64())))
+	return nil
+}
+
+func GetPSMemMetrics(_ context.Context, repo repository) error {
+	v, err := mem.VirtualMemory()
+	if err != nil {
+		return err
+	}
+	repo.Set(gauge+"FreeMemory", types.GaugeToBytes(types.Gauge(v.Free)))
+	repo.Set(gauge+"TotalMemory", types.GaugeToBytes(types.Gauge(v.Total)))
+	return nil
+}
+
+func GetPSCPUMetrics(ctx context.Context, repo repository) error {
+	cpu, err := cpu.PercentWithContext(ctx, 0, true)
+	if err != nil {
+		return err
+	}
+	for n := range cpu {
+		repo.Set(gauge+"CPUutilization"+strconv.Itoa(n+1), types.GaugeToBytes(types.Gauge(cpu[n])))
+	}
+	return nil
 }
 
 type logger interface {
