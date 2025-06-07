@@ -43,7 +43,7 @@ func DumpRepoToFile(path string, repo dataDumper, mode os.FileMode) (err error) 
 }
 
 func dump(w writer, repo dataDumper) error {
-	if repo.Size() == 0 {
+	if repo.CacheSize() == 0 {
 		return errors.New("repository is empty")
 	}
 	if err := repo.ForEach(context.Background(), func(k string, v []byte) error {

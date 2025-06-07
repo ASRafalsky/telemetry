@@ -2,17 +2,20 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/go-chi/chi/v5"
-	"go.uber.org/zap"
 
-	"github.com/ASRafalsky/telemetry/internal/backup"
+	"github.com/ASRafalsky/telemetry/internal/config"
 	"github.com/ASRafalsky/telemetry/internal/handlers"
 	"github.com/ASRafalsky/telemetry/internal/middleware"
 	"github.com/ASRafalsky/telemetry/internal/repository"
-	"github.com/ASRafalsky/telemetry/internal/storage"
 	"github.com/ASRafalsky/telemetry/internal/templates"
+	"github.com/ASRafalsky/telemetry/pkg/cache"
 	"github.com/ASRafalsky/telemetry/pkg/log"
 )
 
@@ -28,47 +31,99 @@ func main() {
 	}
 	defer Log.Sync()
 
-	repo := repository.NewExtendedRepository(storage.New[string, []byte]())
+	Log.Info("Starting telemetry server", cfg.Addr, cfg.LogLevel, cfg.DumpPath)
+	repo := repository.NewExtendedRepository(cache.New[string, []byte]())
 
-	if cfg.Restore {
-		if err = backup.RestoreRepo(cfg.DumpPath, repo); err != nil {
-			Log.Error("Failed to restore from the dump file:", cfg.DumpPath, err.Error())
-		}
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
+	defer cancel()
+
+	if db, err := initDB(ctx, cfg.DB, *Log); err == nil {
+		repo.UseDB(db)
+		defer func() {
+			if err = db.Close(); err != nil {
+				Log.Error("Failed to close db:", err.Error())
+			}
+		}()
 	}
 
-	ctx := context.Background()
-	go backup.BackupRepo(ctx, repo, cfg.StorePeriod, cfg.DumpPath, *Log)
+	repo.Maintain(ctx, cfg, *Log)
 
-	Log.Fatal("Failed to start server:" +
-		zap.String("err:",
-			http.ListenAndServe(cfg.Addr, middleware.WithLogging(newRouter(repo, Log), Log)).Error()).String)
+	runServer(ctx, cancel, repo, cfg, Log)
+
+	Log.Info("Telemetry Server stopped.")
 }
 
-func newRouter(repo dataRepository, logger *log.Logger) http.Handler {
+func runServer(ctx context.Context, cancel context.CancelFunc, repo dataRepository, cfg config.Server, logger *log.Logger) {
+	logger.Info("Starting server", cfg.Addr)
+
+	srv := http.Server{
+		Addr:    cfg.Addr,
+		Handler: middleware.WithLogging(newRouter(repo, cfg, logger), logger),
+	}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Fatal("Failed to start server:", err.Error())
+		}
+		cancel()
+	}()
+
+	<-ctx.Done()
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		logger.Info("Stopping server by cause:", ctxErr.Error())
+	}
+
+	srvCtx, srvCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer srvCancel()
+	if err := srv.Shutdown(srvCtx); err != nil {
+		logger.Fatal("Failed to shutdown server:", err.Error())
+	}
+	logger.Info("Server shutdown completed")
+}
+
+func newRouter(repo dataRepository, cfg config.Server, logger *log.Logger) http.Handler {
 	r := chi.NewRouter()
 	r.Route("/", func(r chi.Router) {
 		r.Route("/update", func(r chi.Router) {
-			r.Post("/", middleware.WithCompress(handlers.JSONPostHandler(repo, handlers.SetDataTo), logger))
-			r.Post("/gauge/{name}/{value}", handlers.GaugePostHandler(repo))
-			r.Post("/counter/{name}/{value}", handlers.CounterPostHandler(repo))
-			r.Post("/{type}/{name}/{value}", handlers.FailurePostHandler())
+			r.Post("/",
+				middleware.WithSign(middleware.WithCompress(handlers.JSONPostHandler(repo, handlers.SetDataTo), logger),
+					[]byte(cfg.Key), logger))
+			r.Post("/gauge/{name}/{value}",
+				middleware.WithSign(handlers.GaugePostHandler(repo), []byte(cfg.Key), logger))
+			r.Post("/counter/{name}/{value}",
+				middleware.WithSign(handlers.CounterPostHandler(repo), []byte(cfg.Key), logger))
+			r.Post("/{type}/{name}/{value}",
+				middleware.WithSign(handlers.FailurePostHandler(), []byte(cfg.Key), logger))
 		})
 		r.Route("/value", func(r chi.Router) {
-			r.Post("/", middleware.WithCompress(handlers.JSONPostHandler(repo, handlers.GetDataFrom), logger))
-			r.Get("/gauge/{name}", handlers.GaugeGetHandler(repo))
-			r.Get("/counter/{name}", handlers.CounterGetHandler(repo))
-			r.Get("/{type}/{name}", handlers.FailureGetHandler())
+			r.Post("/",
+				middleware.WithSign(middleware.WithCompress(handlers.JSONPostHandler(repo, handlers.GetDataFrom), logger),
+					[]byte(cfg.Key), logger))
+			r.Get("/gauge/{name}", middleware.WithSign(handlers.GaugeGetHandler(repo), []byte(cfg.Key), logger))
+			r.Get("/counter/{name}", middleware.WithSign(handlers.CounterGetHandler(repo), []byte(cfg.Key), logger))
+			r.Get("/{type}/{name}", middleware.WithSign(handlers.FailureGetHandler(), []byte(cfg.Key), logger))
 		})
-		r.Post("/", handlers.FailurePostHandler())
-		r.Get("/", middleware.WithCompress(handlers.AllGetHandler(templates.PrepareTemplate(), repo), logger))
+		r.Route("/ping", func(r chi.Router) {
+			r.Get("/", middleware.WithSign(handlers.DBPingHandler(repo), []byte(cfg.Key), logger))
+		})
+		r.Route("/updates", func(r chi.Router) {
+			r.Post("/",
+				middleware.WithSign(middleware.WithCompress(handlers.JSONPostHandler(repo, handlers.SetDataTo), logger),
+					[]byte(cfg.Key), logger))
+		})
+		r.Post("/", middleware.WithSign(handlers.FailurePostHandler(), []byte(cfg.Key), logger))
+		r.Get("/",
+			middleware.WithSign(middleware.WithCompress(handlers.AllGetHandler(templates.PrepareTemplate(), repo), logger),
+				[]byte(cfg.Key), logger))
 	})
 	return r
 }
 
 type dataRepository interface {
 	Set(k string, v []byte)
-	Get(k string) ([]byte, bool)
+	Get(ctx context.Context, k string) ([]byte, error)
 	ForEach(ctx context.Context, fn func(k string, v []byte) error) error
-	Size() int
-	Delete(k string)
+	Delete(ctx context.Context, k string) error
+	Ping(ctx context.Context) error
+	Size() (int, error)
 }

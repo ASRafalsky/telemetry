@@ -1,4 +1,4 @@
-package backup
+package test
 
 import (
 	"bytes"
@@ -9,22 +9,24 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/ASRafalsky/telemetry/internal/backup"
 	"github.com/ASRafalsky/telemetry/internal/repository"
-	"github.com/ASRafalsky/telemetry/internal/storage"
 	"github.com/ASRafalsky/telemetry/internal/transport"
+	"github.com/ASRafalsky/telemetry/pkg/cache"
 )
 
 const (
 	gauge   = "gauge"
 	counter = "counter"
+	cnt     = 1000
 )
 
 func TestBackup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "/test/backup")
 
-	repo := repository.NewExtendedRepository(storage.New[string, []byte]())
+	repo := repository.NewExtendedRepository(cache.New[string, []byte]())
 
-	for i := range 100 {
+	for i := range cnt {
 		idx := strconv.Itoa(i)
 		gaugeVal := float64(i)
 		counterVal := int64(i)
@@ -45,20 +47,20 @@ func TestBackup(t *testing.T) {
 	}
 
 	// Add data to dump.
-	require.NoError(t, DumpRepoToFile(path, repo, 0o644))
+	require.NoError(t, backup.DumpRepoToFile(path, repo, 0o644))
 
 	// Check the dump file.
 	stat, err := os.Stat(path)
 	require.NoError(t, err)
 	require.NotZero(t, stat.Size())
 
-	restoredRepo := storage.New[string, []byte]()
+	restoredRepo := cache.New[string, []byte]()
 
 	// Try to restore from the dump file.
-	err = RestoreRepoFromFile(path, restoredRepo, false)
+	err = backup.RestoreRepoFromFile(path, restoredRepo, false)
 	require.NoError(t, err)
-	require.Equal(t, repo.Size(), restoredRepo.Size())
-	for i := range 100 {
+	require.Equal(t, repo.CacheSize(), restoredRepo.Size())
+	for i := range cnt {
 		idx := strconv.Itoa(i)
 		gaugeVal := float64(i)
 		counterVal := int64(i)
@@ -83,11 +85,11 @@ func TestBackup(t *testing.T) {
 		require.Nil(t, m[0].Value)
 	}
 
-	restoredRepo2 := storage.New[string, []byte]()
+	restoredRepo2 := cache.New[string, []byte]()
 
-	err = RestoreRepoFromFile(path, restoredRepo2, true)
+	err = backup.RestoreRepoFromFile(path, restoredRepo2, true)
 	require.NoError(t, err)
-	for i := range 100 {
+	for i := range cnt {
 		idx := strconv.Itoa(i)
 		gaugeVal := float64(i)
 		counterVal := int64(i)

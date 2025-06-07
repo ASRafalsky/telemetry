@@ -47,13 +47,12 @@ func RestoreRepo(path string, repo dataRestorer) error {
 
 type dataRestorer interface {
 	Set(k string, v []byte)
-	Size() int
 }
 
 type dataDumper interface {
-	Get(k string) ([]byte, bool)
+	Get(ctx context.Context, key string) ([]byte, error)
 	ForEach(ctx context.Context, fn func(k string, v []byte) error) error
-	Size() int
+	CacheSize() int
 	IsReady() bool
 	Ready()
 }

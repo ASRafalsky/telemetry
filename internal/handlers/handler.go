@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/mailru/easyjson"
@@ -14,13 +15,13 @@ import (
 	"github.com/ASRafalsky/telemetry/internal/types"
 )
 
-type dataHandler func(repository repository, metrics transport.Metrics) ([]byte, int, error)
+type dataHandler func(ctx context.Context, repository repository, metrics transport.Metrics) ([]byte, int, error)
 
 func JSONPostHandler(repo repository, fn dataHandler) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		buf, err := io.ReadAll(req.Body)
 		if err != nil {
-			http.Error(res, err.Error(), http.StatusInternalServerError)
+			res.WriteHeader(http.StatusNotFound)
 			return
 		}
 		defer func() {
@@ -29,23 +30,24 @@ func JSONPostHandler(repo repository, fn dataHandler) func(http.ResponseWriter, 
 		}()
 		metricList, err := transport.DeserializeMetrics(buf)
 		if err != nil {
-			http.Error(res, err.Error(), http.StatusInternalServerError)
+			res.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 		if len(metricList) == 0 {
-			http.Error(res, "metrics list is empty", http.StatusInternalServerError)
+			res.WriteHeader(http.StatusNotFound)
+			return
 		}
 		for _, m := range metricList {
 			var status int
-			buf, status, err = fn(repo, m)
+			buf, status, err = fn(req.Context(), repo, m)
 			if err != nil {
-				http.Error(res, err.Error(), status)
+				res.WriteHeader(status)
 				return
 			}
 
 			res.Header().Set("Content-Type", "application/json")
 			if _, err = res.Write(buf); err != nil {
-				http.Error(res, err.Error(), http.StatusInternalServerError)
+				res.WriteHeader(http.StatusInternalServerError)
 				return
 			}
 
@@ -91,7 +93,7 @@ func GaugeGetHandler(repo repository) func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
-		value, err := gaugeGetDataHandler(repo, strings.ToLower(key))
+		value, err := gaugeGetDataHandler(req.Context(), repo, strings.ToLower(key))
 		if err != nil {
 			res.WriteHeader(http.StatusNotFound)
 			return
@@ -127,7 +129,7 @@ func CounterPostHandler(repo repository) func(http.ResponseWriter, *http.Request
 		}
 
 		delta := int64(value)
-		if _, err := counterPostDataHandler(repo, transport.Metrics{
+		if _, err := counterPostDataHandler(req.Context(), repo, transport.Metrics{
 			MType: Counter,
 			ID:    strings.ToLower(key),
 			Delta: &delta,
@@ -149,7 +151,7 @@ func CounterGetHandler(repo repository) func(http.ResponseWriter, *http.Request)
 			return
 		}
 
-		value, err := counterGetDataHandler(repo, strings.ToLower(key))
+		value, err := counterGetDataHandler(req.Context(), repo, strings.ToLower(key))
 		if err != nil {
 			res.WriteHeader(http.StatusNotFound)
 			return
@@ -187,15 +189,28 @@ func FailureGetHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
+func DBPingHandler(repo repository) func(http.ResponseWriter, *http.Request) {
+	return func(res http.ResponseWriter, req *http.Request) {
+		ctxPing, cancel := context.WithTimeout(req.Context(), time.Second)
+		defer cancel()
+		if err := repo.Ping(ctxPing); err != nil {
+			res.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		res.WriteHeader(http.StatusOK)
+	}
+}
+
 func AllGetHandler(tmpl *template.Template, repo repository) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
-		if repo.Size() == 0 {
+		keys, err := getKeyList(repo)
+		if err != nil {
 			res.WriteHeader(http.StatusNotFound)
 			return
 		}
 
 		res.Header().Set("Content-Type", "text/html; charset=utf-8")
-		err := tmpl.Execute(res, getKeyList(repo))
+		err = tmpl.Execute(res, keys)
 		if err != nil {
 			http.Error(res, err.Error(), http.StatusInternalServerError)
 			return
@@ -210,16 +225,9 @@ func getName(req *http.Request) string {
 
 type repository interface {
 	Set(k string, v []byte)
-	Get(k string) ([]byte, bool)
+	Get(ctx context.Context, k string) ([]byte, error)
 	ForEach(ctx context.Context, fn func(k string, v []byte) error) error
-	Size() int
-	Delete(k string)
-}
-
-type logger interface {
-	Info(msg ...string)
-	Warn(msg ...string)
-	Error(msg ...string)
-	Debug(msg ...string)
-	Fatal(msg ...string)
+	Delete(ctx context.Context, k string) error
+	Ping(ctx context.Context) error
+	Size() (int, error)
 }

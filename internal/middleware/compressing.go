@@ -4,7 +4,7 @@ import (
 	"compress/gzip"
 	"net/http"
 
-	"github.com/ASRafalsky/telemetry/internal/compress"
+	"github.com/ASRafalsky/telemetry/pkg/compress"
 )
 
 func WithCompress(h http.HandlerFunc, log logger) http.HandlerFunc {
