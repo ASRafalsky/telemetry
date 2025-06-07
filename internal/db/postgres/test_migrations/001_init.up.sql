@@ -1,0 +1,5 @@
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS metrics_test (id VARCHAR(128) PRIMARY KEY, payload JSONB);
+
+COMMIT;

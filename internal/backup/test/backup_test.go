@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ASRafalsky/telemetry/internal/backup"
-	"github.com/ASRafalsky/telemetry/internal/cache"
 	"github.com/ASRafalsky/telemetry/internal/repository"
 	"github.com/ASRafalsky/telemetry/internal/transport"
+	"github.com/ASRafalsky/telemetry/pkg/cache"
 )
 
 const (

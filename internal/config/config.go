@@ -8,28 +8,33 @@ const (
 	DefaultDumpInterval   = 300
 	DefaultReportInterval = 10
 	DefaultPollInterval   = 2
+	DefaultRateLimit      = 0
 )
 
 type CommonFields struct {
-	Addr     string `env:"ADDRESS" envDefault:":8080"`
-	LogLevel string `env:"LOG_LEVEL" envDefault:"info"`
-	LogPath  string `env:"LOG_PATH" envDefault:""`
+	Addr     string `env:"ADDRESS"`
+	LogLevel string `env:"LOG_LEVEL"`
+	LogPath  string `env:"LOG_PATH"`
+	Key      string `env:"KEY"`
 }
 
 type DB struct {
-	DSN string `env:"DATABASE_DSN" envDefault:""`
+	DSN             string `env:"DATABASE_DSN"`
+	MigrationsPath  string
+	MigrationsTable string
 }
 
 type Server struct {
 	CommonFields
 	DB          DB
-	DumpPath    string `env:"FILE_STORAGE_PATH" envDefault:"./dump/dump"`
-	StorePeriod int    `env:"STORE_INTERVAL" envDefault:"300"`
-	Restore     bool   `env:"RESTORE" envDefault:"false"`
+	DumpPath    string `env:"FILE_STORAGE_PATH"`
+	StorePeriod int    `env:"STORE_INTERVAL"`
+	Restore     bool   `env:"RESTORE"`
 }
 
 type Agent struct {
 	CommonFields
-	ReportPeriod  int `env:"REPORT_INTERVAL" envDefault:"10"`
-	PollingPeriod int `env:"POLL_INTERVAL" envDefault:"2"`
+	ReportPeriod  int `env:"REPORT_INTERVAL"`
+	PollingPeriod int `env:"POLL_INTERVAL"`
+	RateLimit     int `env:"RATE_LIMIT"`
 }

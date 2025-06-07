@@ -5,13 +5,22 @@ import (
 	"database/sql"
 	"errors"
 
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/multierr"
 )
 
 type DB struct {
 	*sql.DB
+	m migrate.Migrate
 }
+
+var (
+	ErrConnectionIssue = errors.New("database connection issue")
+	ErrTransaction     = errors.New("database transaction issue")
+)
 
 func Open(param string) (DB, error) {
 	db, err := sql.Open("pgx", param)
@@ -26,22 +35,22 @@ func (d DB) Ping(ctx context.Context) error {
 }
 
 // Bootstrap prepares DB.
-func (d DB) Bootstrap(ctx context.Context) (err error) {
+func (d DB) Bootstrap(ctx context.Context) error {
 	return d.bootstrap(ctx, `CREATE TABLE IF NOT EXISTS metrics (
             id VARCHAR(128) PRIMARY KEY,
-            payload JSONB);
-			CREATE INDEX key_idx ON metrics (id);`)
+            payload JSONB);`)
 }
 
-// Bootstrap prepares DB.
 func (d DB) bootstrap(ctx context.Context, query string) (err error) {
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return
 	}
 
 	defer func() {
-		_ = tx.Rollback()
+		if errRollback := tx.Rollback(); err != nil && errRollback != nil {
+			err = multierr.Append(err, errRollback)
+		}
 	}()
 
 	// Create metrics table.
@@ -52,8 +61,7 @@ func (d DB) bootstrap(ctx context.Context, query string) (err error) {
 	if errCommit := tx.Commit(); errCommit != nil {
 		err = multierr.Append(err, errCommit)
 	}
-
-	return err
+	return
 }
 
 func (d DB) Set(ctx context.Context, key string, data []byte) error {
@@ -63,7 +71,7 @@ func (d DB) Set(ctx context.Context, key string, data []byte) error {
 
 func (d DB) set(ctx context.Context, query, key string, data []byte) error {
 	_, err := d.ExecContext(ctx, query, key, data)
-	return err
+	return errorHandler(err)
 }
 
 func (d DB) Get(ctx context.Context, key string) ([]byte, error) {
@@ -76,7 +84,10 @@ func (d DB) get(ctx context.Context, query, key string) ([]byte, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
-	return payload, err
+	if err != nil {
+		return nil, errorHandler(err)
+	}
+	return payload, nil
 }
 
 func (d DB) Delete(ctx context.Context, key string) error {
@@ -88,23 +99,25 @@ func (d DB) deleteEntrie(ctx context.Context, query, key string) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
-	return err
+	return errorHandler(err)
 }
 
 func (d DB) ForEach(ctx context.Context, fn func(k string, v []byte) error) error {
-	return d.forEach(ctx, `SELECT id, payload FROM metrics ORDER BY id LIMIT $1 OFFSET $2`, fn)
+	return errorHandler(d.forEach(ctx, `SELECT id, payload FROM metrics ORDER BY id LIMIT $1 OFFSET $2`, fn))
 }
 
 const BatchSz = 1000
 
-func (d DB) forEach(ctx context.Context, query string, fn func(k string, v []byte) error) error {
+func (d DB) forEach(ctx context.Context, query string, fn func(k string, v []byte) error) (err error) {
 	offset := 0
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() {
-		_ = tx.Rollback()
+		if errRollback := tx.Rollback(); err != nil && errRollback != nil {
+			err = multierr.Append(err, errRollback)
+		}
 	}()
 
 	for {
@@ -120,23 +133,32 @@ func (d DB) forEach(ctx context.Context, query string, fn func(k string, v []byt
 			}
 			var id string
 			var payload []byte
-			if err := rows.Scan(&id, &payload); err != nil {
-				_ = rows.Close()
+			if err = rows.Scan(&id, &payload); err != nil {
+				if closeErr := rows.Close(); closeErr != nil {
+					err = multierr.Append(err, closeErr)
+				}
 				return err
 			}
-			if err := fn(id, payload); err != nil {
-				_ = rows.Close()
+			if err = fn(id, payload); err != nil {
+				if closeErr := rows.Close(); closeErr != nil {
+					err = multierr.Append(err, closeErr)
+				}
 				return err
 			}
 			processed++
 		}
-		if err := rows.Err(); err != nil {
-			_ = rows.Close()
+		if err = rows.Err(); err != nil {
+			if closeErr := rows.Close(); closeErr != nil {
+				err = multierr.Append(err, closeErr)
+			}
 			return err
 		}
-		_ = rows.Close()
+		err = rows.Close()
 		if processed < BatchSz {
-			return tx.Commit()
+			if errCommit := tx.Commit(); err != nil {
+				err = multierr.Append(err, errCommit)
+			}
+			return err
 		}
 		offset += BatchSz
 	}
@@ -145,7 +167,13 @@ func (d DB) forEach(ctx context.Context, query string, fn func(k string, v []byt
 func (d DB) Size() (int, error) {
 	var sz int
 	err := d.QueryRow(`SELECT COUNT(*) FROM metrics`).Scan(&sz)
-	return sz, err
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, errorHandler(err)
+	}
+	return sz, nil
 }
 
 type Pair struct {
@@ -154,17 +182,19 @@ type Pair struct {
 }
 
 func (d DB) SetBatch(ctx context.Context, batch []Pair) error {
-	return d.setBatch(ctx,
-		`INSERT INTO metrics (id, payload) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET payload = $2`, batch)
+	return errorHandler(d.setBatch(ctx,
+		`INSERT INTO metrics (id, payload) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET payload = $2`, batch))
 }
 
-func (d DB) setBatch(ctx context.Context, query string, batch []Pair) error {
+func (d DB) setBatch(ctx context.Context, query string, batch []Pair) (err error) {
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() {
-		_ = tx.Rollback()
+		if errRollback := tx.Rollback(); err != nil && errRollback != nil {
+			err = multierr.Append(err, errRollback)
+		}
 	}()
 
 	for i := range batch {
@@ -173,5 +203,22 @@ func (d DB) setBatch(ctx context.Context, query string, batch []Pair) error {
 			return err
 		}
 	}
-	return tx.Commit()
+	err = tx.Commit()
+	return
+}
+
+func errorHandler(err error) error {
+	var pgErr *pgconn.PgError
+	if err != nil && errors.As(err, &pgErr) {
+		switch {
+		case pgerrcode.IsInvalidTransactionInitiation(pgErr.Code),
+			pgerrcode.IsInvalidTransactionState(pgErr.Code),
+			pgerrcode.IsInvalidTransactionTermination(pgErr.Code):
+			return ErrTransaction
+		case pgerrcode.IsConnectionException(pgErr.Code):
+			return ErrConnectionIssue
+
+		}
+	}
+	return err
 }

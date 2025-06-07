@@ -3,17 +3,25 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math/rand/v2"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/golang-migrate/migrate/v4"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ASRafalsky/telemetry/internal/transport"
 )
 
 func TestDB(t *testing.T) {
+	_, file, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	migrationFilesPath := filepath.Dir(file) + "/test_migrations"
+
 	db, err := Open("postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable")
 	if err != nil {
 		t.Skip("Failed to connect to database: ", err.Error())
@@ -30,21 +38,19 @@ func TestDB(t *testing.T) {
 	}
 
 	const (
-		cnt             = 1000
-		createTestTable = `CREATE TABLE IF NOT EXISTS metrics_test (id VARCHAR(128) PRIMARY KEY, payload JSONB);`
-		dropTestTable   = `DROP TABLE IF EXISTS metrics_test CASCADE`
-		insertData      = `INSERT INTO metrics_test (id, payload) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET payload = $2`
-		selectData      = `SELECT payload FROM metrics_test WHERE id = $1`
-		deleteData      = `DELETE FROM metrics_test WHERE id = $1`
-		selectForEach   = `SELECT id, payload FROM metrics_test ORDER BY id LIMIT $1 OFFSET $2`
-		insertBatch     = `INSERT INTO metrics_test (id, payload) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET payload = $2`
+		cnt           = 1000
+		insertData    = `INSERT INTO metrics_test (id, payload) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET payload = $2`
+		selectData    = `SELECT payload FROM metrics_test WHERE id = $1`
+		deleteData    = `DELETE FROM metrics_test WHERE id = $1`
+		selectForEach = `SELECT id, payload FROM metrics_test ORDER BY id LIMIT $1 OFFSET $2`
+		insertBatch   = `INSERT INTO metrics_test (id, payload) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET payload = $2`
 	)
 
-	require.NoError(t, db.bootstrap(ctx, createTestTable))
-	defer func() {
-		_, err = db.ExecContext(ctx, dropTestTable)
-		require.NoError(t, err)
-	}()
+	if err = db.MigrateUp(migrationFilesPath); err != nil {
+		if !errors.Is(err, migrate.ErrNoChange) {
+			require.NoError(t, err)
+		}
+	}
 
 	metricsList := make([]transport.Metrics, cnt)
 	keys := make([]string, cnt)

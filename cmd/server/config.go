@@ -2,7 +2,8 @@ package main
 
 import (
 	"flag"
-	"os"
+	"path/filepath"
+	"runtime"
 
 	"github.com/caarlos0/env/v10"
 
@@ -10,48 +11,24 @@ import (
 )
 
 func updateCfg() (config.Server, error) {
+	var migrationPath string
+	_, file, _, ok := runtime.Caller(0)
+	if ok {
+		migrationPath = filepath.Dir(file) + "/db/migrations"
+	}
 	cfg := config.Server{}
-	err := env.Parse(&cfg)
-
-	var (
-		restore     bool
-		addr        string
-		loglevel    string
-		logPath     string
-		dumpPath    string
-		storePeriod int
-		dsn         string
-	)
-	flag.BoolVar(&restore, "r", false, "need to restore from the dump")
-	flag.StringVar(&addr, "a", config.DefaultAddr, "address and port to run server")
-	flag.StringVar(&loglevel, "l", config.DefaultLogLevel, "log level")
-	flag.StringVar(&logPath, "p", "", "log file path")
-	flag.StringVar(&dumpPath, "f", config.DefaultDumpPath, "dump file path")
-	flag.IntVar(&storePeriod, "i", config.DefaultDumpInterval, "dump interval in seconds")
-	flag.StringVar(&dsn, "d", "", "database address")
+	flag.BoolVar(&cfg.Restore, "r", false, "need to restore from the dump")
+	flag.StringVar(&cfg.Addr, "a", config.DefaultAddr, "address and port to run server")
+	flag.StringVar(&cfg.LogLevel, "l", config.DefaultLogLevel, "log level")
+	flag.StringVar(&cfg.LogPath, "p", "", "log file path")
+	flag.StringVar(&cfg.DumpPath, "f", config.DefaultDumpPath, "dump file path")
+	flag.IntVar(&cfg.StorePeriod, "i", config.DefaultDumpInterval, "dump interval in seconds")
+	flag.StringVar(&cfg.DB.DSN, "d", "", "database address")
+	flag.StringVar(&cfg.DB.MigrationsPath, "m", migrationPath, "path to migrations")
+	flag.StringVar(&cfg.DB.MigrationsTable, "t", "", "name of migration table, where migrator writes own data")
+	flag.StringVar(&cfg.Key, "k", "", "key for sign")
 	flag.Parse()
 
-	if envRestore := os.Getenv("RESTORE"); envRestore == "" {
-		cfg.Restore = restore
-	}
-	if cfg.Addr == config.DefaultAddr {
-		cfg.Addr = addr
-	}
-	if cfg.LogLevel == config.DefaultLogLevel {
-		cfg.LogLevel = loglevel
-	}
-	if cfg.LogPath == "" {
-		cfg.LogPath = logPath
-	}
-	if cfg.DumpPath == config.DefaultDumpPath {
-		cfg.DumpPath = dumpPath
-	}
-	if cfg.StorePeriod == config.DefaultDumpInterval {
-		cfg.StorePeriod = storePeriod
-	}
-	if cfg.DB.DSN == "" {
-		cfg.DB.DSN = dsn
-	}
-
+	err := env.Parse(&cfg)
 	return cfg, err
 }
