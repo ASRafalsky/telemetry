@@ -14,10 +14,10 @@ import (
 	"github.com/gojek/heimdall/v7/httpclient"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ASRafalsky/telemetry/internal/cache"
 	"github.com/ASRafalsky/telemetry/internal/transport"
 	"github.com/ASRafalsky/telemetry/internal/types"
 	"github.com/ASRafalsky/telemetry/internal/utils"
+	"github.com/ASRafalsky/telemetry/pkg/cache"
 )
 
 const (

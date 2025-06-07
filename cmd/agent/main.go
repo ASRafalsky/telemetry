@@ -6,9 +6,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/ASRafalsky/telemetry/internal/cache"
 	"github.com/ASRafalsky/telemetry/internal/poller"
 	"github.com/ASRafalsky/telemetry/internal/reporter"
+	"github.com/ASRafalsky/telemetry/pkg/cache"
 	"github.com/ASRafalsky/telemetry/pkg/log"
 )
 

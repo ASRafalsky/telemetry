@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ASRafalsky/telemetry/internal/cache"
 	"github.com/ASRafalsky/telemetry/internal/types"
+	"github.com/ASRafalsky/telemetry/pkg/cache"
 	"github.com/ASRafalsky/telemetry/pkg/log"
 )
 

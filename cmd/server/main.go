@@ -10,12 +10,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/ASRafalsky/telemetry/internal/cache"
 	"github.com/ASRafalsky/telemetry/internal/config"
 	"github.com/ASRafalsky/telemetry/internal/handlers"
 	"github.com/ASRafalsky/telemetry/internal/middleware"
 	"github.com/ASRafalsky/telemetry/internal/repository"
 	"github.com/ASRafalsky/telemetry/internal/templates"
+	"github.com/ASRafalsky/telemetry/pkg/cache"
 	"github.com/ASRafalsky/telemetry/pkg/log"
 )
 
@@ -34,9 +34,7 @@ func main() {
 	Log.Info("Starting telemetry server", cfg.Addr, cfg.LogLevel, cfg.DumpPath)
 	repo := repository.NewExtendedRepository(cache.New[string, []byte]())
 
-	ctx, cancel := signal.NotifyContext(context.Background(),
-		syscall.SIGTERM,
-	)
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer cancel()
 
 	if db, err := initDB(ctx, cfg.DB, *Log); err == nil {
@@ -51,6 +49,7 @@ func main() {
 	repo.Maintain(ctx, cfg, *Log)
 
 	runServer(ctx, cancel, repo, cfg, Log)
+
 	Log.Info("Telemetry Server stopped.")
 }
 
@@ -73,6 +72,7 @@ func runServer(ctx context.Context, cancel context.CancelFunc, repo dataReposito
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		logger.Info("Stopping server by cause:", ctxErr.Error())
 	}
+
 	srvCtx, srvCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer srvCancel()
 	if err := srv.Shutdown(srvCtx); err != nil {

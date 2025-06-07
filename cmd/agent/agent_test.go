@@ -16,12 +16,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ASRafalsky/telemetry/internal/cache"
 	"github.com/ASRafalsky/telemetry/internal/config"
 	"github.com/ASRafalsky/telemetry/internal/poller"
 	"github.com/ASRafalsky/telemetry/internal/reporter"
 	"github.com/ASRafalsky/telemetry/internal/transport"
 	"github.com/ASRafalsky/telemetry/internal/utils"
+	"github.com/ASRafalsky/telemetry/pkg/cache"
 	"github.com/ASRafalsky/telemetry/pkg/log"
 )
 
