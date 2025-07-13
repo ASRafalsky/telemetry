@@ -62,6 +62,39 @@ func TestSerializeMetrics(t *testing.T) {
 	})
 }
 
+func BenchmarkSingleCustomConvertation(b *testing.B) {
+	var (
+		val   = rand.Float64()
+		delta = rand.Int64()
+	)
+	metric := Metrics{
+		MType: "MType",
+		ID:    "ID",
+		Value: &val,
+		Delta: &delta,
+	}
+
+	var (
+		outputMetrics []Metrics
+		err           error
+	)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		buf := bytes.NewBuffer(nil)
+		err = SerializeMetrics(&metric, buf)
+		if err != nil {
+			b.Fatal(err)
+		}
+		outputMetrics, err = DeserializeMetrics(buf.Bytes())
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.StopTimer()
+	require.Equal(b, *outputMetrics[0].Value, val)
+	require.Equal(b, *outputMetrics[0].Delta, delta)
+}
+
 func BenchmarkCustomConvertation(b *testing.B) {
 	metricsList := make([]Metrics, cnt)
 	for i := range cnt {
@@ -126,6 +159,41 @@ func BenchmarkJSONConvertation(b *testing.B) {
 			b.Fatal(err)
 		}
 		err = json.Unmarshal(buf, &outputMetrics)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.StopTimer()
+	require.Len(b, outputMetrics, cnt)
+}
+
+func BenchmarkCompositeConvertation(b *testing.B) {
+	metricsList := make([]Metrics, cnt)
+	for i := range cnt {
+		var (
+			val   = rand.Float64()
+			delta = rand.Int64()
+		)
+		metricsList[i] = Metrics{
+			MType: "MType" + strconv.Itoa(i),
+			ID:    "ID" + strconv.Itoa(i),
+			Value: &val,
+			Delta: &delta,
+		}
+	}
+	require.Len(b, metricsList, cnt)
+	var (
+		outputMetrics []Metrics
+		buf           []byte
+		err           error
+	)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		buf, err = json.Marshal(metricsList)
+		if err != nil {
+			b.Fatal(err)
+		}
+		outputMetrics, err = DeserializeMetrics(buf)
 		if err != nil {
 			b.Fatal(err)
 		}

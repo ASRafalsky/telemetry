@@ -3,6 +3,7 @@ package types
 import (
 	"errors"
 	"math"
+	"math/rand/v2"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -125,4 +126,38 @@ func TestBytesToTypeWithBadData(t *testing.T) {
 			BytesToCounter(data)
 		})
 	}
+}
+
+const cnt = 1000
+
+func BenchmarkGaugeToBytes(b *testing.B) {
+	testVal := make([]Gauge, cnt)
+	for range 100 {
+		testVal = append(testVal, Gauge(rand.ExpFloat64()))
+	}
+	var result []byte
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for n := range cnt {
+			result = GaugeToBytes(testVal[n])
+		}
+	}
+	b.StopTimer()
+	require.NotNil(b, result)
+}
+
+func BenchmarkCounterToBytes(b *testing.B) {
+	testVal := make([]Counter, cnt)
+	for range 100 {
+		testVal = append(testVal, Counter(rand.Int64()))
+	}
+	var result []byte
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for n := range cnt {
+			result = CounterToBytes(testVal[n])
+		}
+	}
+	b.StopTimer()
+	require.NotNil(b, result)
 }

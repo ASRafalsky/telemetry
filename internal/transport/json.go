@@ -3,6 +3,7 @@ package transport
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 
 	"github.com/mailru/easyjson"
@@ -17,23 +18,36 @@ type Metrics struct {
 }
 
 func DeserializeMetrics(buf []byte) ([]Metrics, error) {
-	var metricList []Metrics
-	if err := json.Unmarshal(buf, &metricList); err == nil {
-		return metricList, nil
-	}
-	for idx := bytes.Index(buf, []byte{'}'}); idx >= 0 && len(buf) > idx; idx = bytes.Index(buf, []byte{'}'}) {
-		m := Metrics{}
-		if err := easyjson.Unmarshal(bytes.TrimPrefix(buf[:idx+1], []byte(",")), &m); err != nil {
-			if err == io.EOF {
-				break
-			}
+
+	metricsCnt := bytes.Count(buf, []byte("{"))
+	switch metricsCnt {
+	case 0:
+		return nil, errors.New("invalid input data")
+	case 1:
+		var m Metrics
+		if err := easyjson.Unmarshal(buf, &m); err == nil {
+			return []Metrics{m}, err
+		}
+	default:
+		metricList := make([]Metrics, 0, metricsCnt)
+		if err := json.Unmarshal(buf, &metricList); err == nil {
 			return metricList, nil
 		}
-		metricList = append(metricList, m)
-		idx = bytes.Index(buf, []byte{'}'})
-		buf = buf[idx+1:]
+		for idx := bytes.Index(buf, []byte{'}'}); idx >= 0 && len(buf) > idx; idx = bytes.Index(buf, []byte{'}'}) {
+			var m Metrics
+			if err := easyjson.Unmarshal(bytes.TrimPrefix(buf[:idx+1], []byte(",")), &m); err != nil {
+				if err == io.EOF {
+					break
+				}
+				return metricList, nil
+			}
+			metricList = append(metricList, m)
+			idx = bytes.Index(buf, []byte{'}'})
+			buf = buf[idx+1:]
+		}
+		return metricList, nil
 	}
-	return metricList, nil
+	return nil, errors.New("failed to deserialize metrics")
 }
 
 func SerializeMetrics(m *Metrics, w writer) error {

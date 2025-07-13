@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/ASRafalsky/telemetry/internal/db/postgres"
-	"github.com/ASRafalsky/telemetry/internal/handlers"
+	"github.com/ASRafalsky/telemetry/internal/types"
 )
 
 type ExtendedRepository struct {
@@ -111,9 +111,9 @@ func (r *ExtendedRepository) Sync(ctx context.Context) error {
 	if err := r.cache.DropFn(ctx, func(k string, v []byte) (bool, error) {
 		var drop bool
 		switch {
-		case strings.HasPrefix(k, handlers.Gauge):
+		case strings.HasPrefix(k, types.GaugeType):
 			drop = true
-		case strings.HasPrefix(k, handlers.Counter): // Do not drop it because we need this value.
+		case strings.HasPrefix(k, types.CounterType): // Do not drop it because we need this value.
 		default:
 			return false, nil
 		}

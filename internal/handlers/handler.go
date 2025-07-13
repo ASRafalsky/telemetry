@@ -72,7 +72,7 @@ func GaugePostHandler(repo repository) func(http.ResponseWriter, *http.Request) 
 
 		gVal := float64(value)
 		if _, err := gaugePostDataHandler(repo, transport.Metrics{
-			MType: Gauge,
+			MType: types.GaugeType,
 			ID:    strings.ToLower(key),
 			Value: &gVal,
 		}); err != nil {
@@ -130,7 +130,7 @@ func CounterPostHandler(repo repository) func(http.ResponseWriter, *http.Request
 
 		delta := int64(value)
 		if _, err := counterPostDataHandler(req.Context(), repo, transport.Metrics{
-			MType: Counter,
+			MType: types.CounterType,
 			ID:    strings.ToLower(key),
 			Delta: &delta,
 		}); err != nil {

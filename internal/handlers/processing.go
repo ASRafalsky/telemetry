@@ -10,11 +10,7 @@ import (
 	"github.com/mailru/easyjson"
 
 	"github.com/ASRafalsky/telemetry/internal/transport"
-)
-
-const (
-	Gauge   = "gauge"
-	Counter = "counter"
+	"github.com/ASRafalsky/telemetry/internal/types"
 )
 
 var (
@@ -23,7 +19,7 @@ var (
 )
 
 func counterPostDataHandler(ctx context.Context, repo repository, value transport.Metrics) ([]byte, error) {
-	name := Counter + value.ID
+	name := types.CounterType + value.ID
 	buf, err := repo.Get(ctx, name)
 	if err != nil {
 		return nil, err
@@ -45,7 +41,7 @@ func counterPostDataHandler(ctx context.Context, repo repository, value transpor
 }
 
 func gaugeGetDataHandler(ctx context.Context, repo repository, key string) ([]byte, error) {
-	buf, err := repo.Get(ctx, Gauge+key)
+	buf, err := repo.Get(ctx, types.GaugeType+key)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +52,7 @@ func gaugeGetDataHandler(ctx context.Context, repo repository, key string) ([]by
 }
 
 func counterGetDataHandler(ctx context.Context, repo repository, key string) ([]byte, error) {
-	buf, err := repo.Get(ctx, Counter+key)
+	buf, err := repo.Get(ctx, types.CounterType+key)
 	if err != nil {
 		return nil, err
 	}
@@ -71,13 +67,13 @@ func gaugePostDataHandler(repo repository, value transport.Metrics) ([]byte, err
 	if err != nil {
 		return nil, err
 	}
-	repo.Set(Gauge+value.ID, buf)
+	repo.Set(types.GaugeType+value.ID, buf)
 	return buf, nil
 }
 
 func SetDataTo(ctx context.Context, repo repository, m transport.Metrics) ([]byte, int, error) {
 	switch m.MType {
-	case Gauge:
+	case types.GaugeType:
 		switch {
 		case m.Value != nil:
 			dataBuf, err := gaugePostDataHandler(repo, m)
@@ -90,7 +86,7 @@ func SetDataTo(ctx context.Context, repo repository, m transport.Metrics) ([]byt
 		default:
 			return nil, http.StatusBadRequest, errors.New("gaugePostDataHandler called with no data")
 		}
-	case Counter:
+	case types.CounterType:
 		switch {
 		case m.Delta != nil:
 			dataBuf, err := counterPostDataHandler(ctx, repo, m)
@@ -110,13 +106,13 @@ func SetDataTo(ctx context.Context, repo repository, m transport.Metrics) ([]byt
 
 func GetDataFrom(ctx context.Context, repo repository, m transport.Metrics) ([]byte, int, error) {
 	switch m.MType {
-	case Gauge:
+	case types.GaugeType:
 		dataBuf, err := gaugeGetDataHandler(ctx, repo, m.ID)
 		if err != nil {
 			return nil, http.StatusNotFound, err
 		}
 		return dataBuf, http.StatusOK, nil
-	case Counter:
+	case types.CounterType:
 		dataBuf, err := counterGetDataHandler(ctx, repo, m.ID)
 		if err != nil {
 			return nil, http.StatusNotFound, err
@@ -135,10 +131,10 @@ func getKeyList(repo repository) ([]string, error) {
 	result := make([]string, sz)
 	_ = repo.ForEach(context.Background(), func(k string, _ []byte) error {
 		switch {
-		case strings.HasPrefix(k, Gauge):
-			result = append(result, strings.TrimPrefix(k, Gauge))
-		case strings.HasPrefix(k, Counter):
-			result = append(result, strings.TrimPrefix(k, Counter))
+		case strings.HasPrefix(k, types.GaugeType):
+			result = append(result, strings.TrimPrefix(k, types.GaugeType))
+		case strings.HasPrefix(k, types.CounterType):
+			result = append(result, strings.TrimPrefix(k, types.CounterType))
 		default:
 			return nil
 		}
