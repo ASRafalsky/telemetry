@@ -8,12 +8,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -58,19 +60,18 @@ func main() {
 			Addr: config.DefaultAddr,
 			Key:  "secret-key",
 		},
-		ReportPeriod: 100,
+		ReportPeriod: 50,
 		RateLimit:    0,
 	})
-	timeout := 10 * time.Second
-	var wg sync.WaitGroup
+	var cnt atomic.Uint64
+	timeout := 1 * time.Second
 	for range 20 {
 		if ctx.Err() != nil {
 			return
 		}
-		wg.Add(1)
 		go func() {
-			defer wg.Done()
-			client := httpclient.NewClient(httpclient.WithHTTPTimeout(timeout))
+			client := httpclient.NewClient(httpclient.WithHTTPTimeout(timeout), httpclient.WithRetryCount(1))
+			fmt.Println(client)
 			var clientWg sync.WaitGroup
 			for range 100 {
 				if ctx.Err() != nil {
@@ -94,6 +95,7 @@ func main() {
 							if err := getValues(ctx, cfg, client, repo); err != nil {
 								logger.Error("Failed to get values", err.Error())
 							}
+							cnt.Add(1)
 						default:
 						}
 					}
@@ -117,7 +119,17 @@ func main() {
 		log.Fatal(resp.Status)
 	}
 
-	wg.Wait()
+	for {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			fmt.Println(cnt.Load())
+		}
+	}
 }
 
 func newSenderCfg(cfg config.Agent) reporter.Config {
