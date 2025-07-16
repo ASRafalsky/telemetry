@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os/signal"
 	"syscall"
@@ -11,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/ASRafalsky/telemetry/internal/config"
+	"github.com/ASRafalsky/telemetry/internal/diagnostics"
 	"github.com/ASRafalsky/telemetry/internal/handlers"
 	"github.com/ASRafalsky/telemetry/internal/middleware"
 	"github.com/ASRafalsky/telemetry/internal/repository"
@@ -48,17 +50,29 @@ func main() {
 
 	repo.Maintain(ctx, cfg, *Log)
 
-	runServer(ctx, cancel, repo, cfg, Log)
+	go func() {
+		diagCfg := newDiagnosticCfg(cfg)
+		fmt.Println(diagCfg)
+		runServer(ctx, cancel, diagnosticRouter(ctx, diagCfg.Diag), diagCfg, Log)
+	}()
+	fmt.Println(cfg)
+	runServer(ctx, cancel, middleware.WithLogging(newRouter(repo, cfg, Log), Log), cfg, Log)
 
 	Log.Info("Telemetry Server stopped.")
 }
 
-func runServer(ctx context.Context, cancel context.CancelFunc, repo dataRepository, cfg config.Server, logger *log.Logger) {
+func runServer(
+	ctx context.Context,
+	cancel context.CancelFunc,
+	handler http.Handler,
+	cfg config.Server,
+	logger *log.Logger,
+) {
 	logger.Info("Starting server", cfg.Addr)
 
 	srv := http.Server{
 		Addr:    cfg.Addr,
-		Handler: middleware.WithLogging(newRouter(repo, cfg, logger), logger),
+		Handler: handler,
 	}
 
 	go func() {
@@ -115,6 +129,16 @@ func newRouter(repo dataRepository, cfg config.Server, logger *log.Logger) http.
 		r.Get("/",
 			middleware.WithSign(middleware.WithCompress(handlers.AllGetHandler(templates.PrepareTemplate(), repo), logger),
 				[]byte(cfg.Key), logger))
+	})
+	return r
+}
+
+func diagnosticRouter(ctx context.Context, cfg config.Diagnostics) http.Handler {
+	r := chi.NewRouter()
+	r.Route("/", func(r chi.Router) {
+		r.Route("/profile", func(r chi.Router) {
+			r.Post("/", diagnostics.ProfilePostHandler(ctx, cfg.Path))
+		})
 	})
 	return r
 }

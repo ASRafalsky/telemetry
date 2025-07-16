@@ -13,13 +13,24 @@ import (
 
 	"github.com/ASRafalsky/telemetry/internal/transport"
 	"github.com/ASRafalsky/telemetry/internal/types"
+	"github.com/ASRafalsky/telemetry/pkg/pool"
 )
 
 type dataHandler func(ctx context.Context, repository repository, metrics transport.Metrics) ([]byte, int, error)
 
+const (
+	defaultDataSZ = 4 * 1024        // 4 KB.
+	maxDataSz     = 1 * 1024 * 1024 // 1 MB
+)
+
+var handlersPoll = pool.NewLimitedPool(maxDataSz, defaultDataSZ)
+
 func JSONPostHandler(repo repository, fn dataHandler) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
-		buf, err := io.ReadAll(req.Body)
+		buf := handlersPoll.Get()
+		defer handlersPoll.Put(buf)
+
+		_, err := io.Copy(buf, req.Body)
 		if err != nil {
 			res.WriteHeader(http.StatusNotFound)
 			return
@@ -28,7 +39,7 @@ func JSONPostHandler(repo repository, fn dataHandler) func(http.ResponseWriter, 
 			// Handled at the logging level.
 			_ = req.Body.Close()
 		}()
-		metricList, err := transport.DeserializeMetrics(buf)
+		metricList, err := transport.DeserializeMetrics(buf.Bytes())
 		if err != nil {
 			res.WriteHeader(http.StatusInternalServerError)
 			return
@@ -39,14 +50,14 @@ func JSONPostHandler(repo repository, fn dataHandler) func(http.ResponseWriter, 
 		}
 		for _, m := range metricList {
 			var status int
-			buf, status, err = fn(req.Context(), repo, m)
+			bufToWrite, status, err := fn(req.Context(), repo, m)
 			if err != nil {
 				res.WriteHeader(status)
 				return
 			}
 
 			res.Header().Set("Content-Type", "application/json")
-			if _, err = res.Write(buf); err != nil {
+			if _, err = res.Write(bufToWrite); err != nil {
 				res.WriteHeader(http.StatusInternalServerError)
 				return
 			}

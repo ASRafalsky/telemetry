@@ -15,6 +15,7 @@ import (
 
 type Logger struct {
 	*zap.Logger
+	level zapcore.Level
 }
 
 func AddLoggerWith(level, output string) (*Logger, error) {
@@ -36,7 +37,8 @@ func AddLoggerWith(level, output string) (*Logger, error) {
 	}
 
 	return &Logger{
-		zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(cfg), zapcore.AddSync(out), lvl)),
+		level:  lvl,
+		Logger: zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(cfg), zapcore.AddSync(out), lvl)),
 	}, nil
 }
 
@@ -57,14 +59,23 @@ func (l *Logger) Sync() {
 }
 
 func (l *Logger) Fatal(msg string, add ...string) {
+	if l.level >= zapcore.FatalLevel {
+		return
+	}
 	l.Logger.Fatal(buildMsg(msg, add...))
 }
 
 func (l *Logger) Error(msg string, add ...string) {
+	if l.level >= zapcore.ErrorLevel {
+		return
+	}
 	l.Logger.Error(buildMsg(msg, add...))
 }
 
 func (l *Logger) Warn(msg string, add ...string) {
+	if l.level >= zapcore.WarnLevel {
+		return
+	}
 	l.Logger.Warn(buildMsg(msg, add...))
 }
 
@@ -73,6 +84,9 @@ func (l *Logger) Debug(msg string, add ...string) {
 }
 
 func (l *Logger) Info(msg string, add ...string) {
+	if l.level >= zapcore.InfoLevel {
+		return
+	}
 	l.Logger.Info(buildMsg(msg, add...))
 }
 
