@@ -12,7 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/ASRafalsky/telemetry/internal/config"
-	"github.com/ASRafalsky/telemetry/internal/diagnostics"
+	"github.com/ASRafalsky/telemetry/internal/diagnostic"
 	"github.com/ASRafalsky/telemetry/internal/handlers"
 	"github.com/ASRafalsky/telemetry/internal/middleware"
 	"github.com/ASRafalsky/telemetry/internal/repository"
@@ -137,7 +137,7 @@ func diagnosticRouter(ctx context.Context, cfg config.Diagnostics) http.Handler 
 	r := chi.NewRouter()
 	r.Route("/", func(r chi.Router) {
 		r.Route("/profile", func(r chi.Router) {
-			r.Post("/", diagnostics.ProfilePostHandler(ctx, cfg.Path))
+			r.Post("/", diagnostic.ProfilePostHandler(ctx, cfg.Path))
 		})
 	})
 	return r

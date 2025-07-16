@@ -88,6 +88,7 @@ func WithSign(h http.HandlerFunc, key []byte, log logger) http.HandlerFunc {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
+			r.Body = io.NopCloser(buf)
 		}
 		h.ServeHTTP(w, r)
 	}

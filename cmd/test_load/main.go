@@ -8,12 +8,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -47,7 +49,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	logger, err := lllog.AddLoggerWith("error", "")
+	logger, err := lllog.AddLoggerWith("fatal", "")
 	if err != nil {
 		panic(err)
 	}
@@ -61,9 +63,12 @@ func main() {
 		ReportPeriod: 100,
 		RateLimit:    0,
 	})
-	timeout := 10 * time.Second
-	var wg sync.WaitGroup
-	for range 20 {
+	var (
+		cnt atomic.Uint64
+		wg  sync.WaitGroup
+	)
+	timeout := 100 * time.Second
+	for range 10 {
 		if ctx.Err() != nil {
 			return
 		}
@@ -94,28 +99,45 @@ func main() {
 							if err := getValues(ctx, cfg, client, repo); err != nil {
 								logger.Error("Failed to get values", err.Error())
 							}
-						default:
+							cnt.Add(1)
 						}
 					}
 				}()
-				clientWg.Wait()
 			}
+			clientWg.Wait()
 		}()
 	}
 
 	time.Sleep(10 * time.Second)
 
-	client := httpclient.NewClient(httpclient.WithHTTPTimeout(timeout))
+	client := httpclient.NewClient(httpclient.WithHTTPTimeout(timeout), httpclient.WithRetryCount(1000))
 	header := http.Header{
 		"Content-Type": []string{"text/plain"},
 	}
 	resp, err := client.Post("http://"+config.DefaultDiagAddr+"/profile/", nil, header)
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if err != nil {
 		log.Fatal(err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		log.Fatal(resp.Status)
 	}
+
+	go func() {
+		for {
+			ticker := time.NewTicker(5 * time.Second)
+			defer ticker.Stop()
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				fmt.Println(cnt.Load())
+			}
+		}
+	}()
 
 	wg.Wait()
 }
@@ -167,6 +189,9 @@ func getValues(
 		if err != nil {
 			return err
 		}
+		defer func() {
+			_ = resp.Body.Close()
+		}()
 		if resp.StatusCode != http.StatusOK {
 			return errors.New(resp.Status)
 		}

@@ -59,21 +59,21 @@ func (l *Logger) Sync() {
 }
 
 func (l *Logger) Fatal(msg string, add ...string) {
-	if l.level >= zapcore.FatalLevel {
+	if l.level > zapcore.FatalLevel {
 		return
 	}
 	l.Logger.Fatal(buildMsg(msg, add...))
 }
 
 func (l *Logger) Error(msg string, add ...string) {
-	if l.level >= zapcore.ErrorLevel {
+	if l.level > zapcore.ErrorLevel {
 		return
 	}
 	l.Logger.Error(buildMsg(msg, add...))
 }
 
 func (l *Logger) Warn(msg string, add ...string) {
-	if l.level >= zapcore.WarnLevel {
+	if l.level > zapcore.WarnLevel {
 		return
 	}
 	l.Logger.Warn(buildMsg(msg, add...))
@@ -84,7 +84,7 @@ func (l *Logger) Debug(msg string, add ...string) {
 }
 
 func (l *Logger) Info(msg string, add ...string) {
-	if l.level >= zapcore.InfoLevel {
+	if l.level > zapcore.InfoLevel {
 		return
 	}
 	l.Logger.Info(buildMsg(msg, add...))

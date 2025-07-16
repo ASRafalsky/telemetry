@@ -29,9 +29,8 @@ func JSONPostHandler(repo repository, fn dataHandler) func(http.ResponseWriter, 
 	return func(res http.ResponseWriter, req *http.Request) {
 		buf := handlersPoll.Get()
 		defer handlersPoll.Put(buf)
-
-		_, err := io.Copy(buf, req.Body)
-		if err != nil {
+		n, err := io.Copy(buf, req.Body)
+		if err != nil || n == 0 {
 			res.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -39,6 +38,7 @@ func JSONPostHandler(repo repository, fn dataHandler) func(http.ResponseWriter, 
 			// Handled at the logging level.
 			_ = req.Body.Close()
 		}()
+
 		metricList, err := transport.DeserializeMetrics(buf.Bytes())
 		if err != nil {
 			res.WriteHeader(http.StatusInternalServerError)

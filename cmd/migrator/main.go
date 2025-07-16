@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+
 	// migration lib
 	"github.com/golang-migrate/migrate/v4"
 	// driver for migration applying postgres

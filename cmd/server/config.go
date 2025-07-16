@@ -23,7 +23,7 @@ func updateCfg() (config.Server, error) {
 	flag.StringVar(&cfg.LogPath, "p", "", "log file path")
 	flag.StringVar(&cfg.DumpPath, "f", config.DefaultDumpPath, "dump file path")
 	flag.IntVar(&cfg.StorePeriod, "i", config.DefaultDumpInterval, "dump interval in seconds")
-	flag.StringVar(&cfg.DB.DSN, "d", "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable", "database address")
+	flag.StringVar(&cfg.DB.DSN, "d", "", "database address")
 	flag.StringVar(&cfg.DB.MigrationsPath, "m", migrationPath, "path to migrations")
 	flag.StringVar(&cfg.DB.MigrationsTable, "t", "", "name of migration table, where migrator writes own data")
 	flag.StringVar(&cfg.Key, "k", "secret-key", "key for sign")
