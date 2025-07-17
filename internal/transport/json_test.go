@@ -3,6 +3,7 @@ package transport
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"math/rand/v2"
 	"strconv"
 	"testing"
@@ -200,4 +201,32 @@ func BenchmarkCompositeConvertation(b *testing.B) {
 	}
 	b.StopTimer()
 	require.Len(b, outputMetrics, cnt)
+}
+
+func ExampleSerializeMetrics() {
+	val := 123.456
+	delta := int64(789)
+	metricsList := []Metrics{
+		{
+			MType: "MType1",
+			ID:    "ID1",
+			Value: &val,
+		},
+		{
+			MType: "MType2",
+			ID:    "ID2",
+			Delta: &delta,
+		},
+	}
+
+	buf := bytes.NewBuffer(nil)
+	for _, m := range metricsList {
+		err := SerializeMetrics(&m, buf)
+		if err != nil {
+			panic(err)
+		}
+	}
+	fmt.Println(buf.String())
+	// Output:
+	// {"id":"ID1","type":"MType1","value":123.456}{"id":"ID2","type":"MType2","delta":789}
 }

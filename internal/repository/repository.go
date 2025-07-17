@@ -1,3 +1,5 @@
+// Package repository contains repository with database and cache extension, and all necessary methods for interaction
+// with it.
 package repository
 
 import (
@@ -11,35 +13,42 @@ import (
 	"github.com/ASRafalsky/telemetry/internal/types"
 )
 
+// ExtendedRepository describes ExtendedRepository.
 type ExtendedRepository struct {
 	db      db
 	cache   cache
 	newData atomic.Bool
 }
 
+// NewExtendedRepository creates new ExtendedRepository instance with cache.
 func NewExtendedRepository(cache cache) *ExtendedRepository {
 	return &ExtendedRepository{
 		cache: cache,
 	}
 }
 
+// UseDB adds db to the ExtendedRepository instance.
 func (r *ExtendedRepository) UseDB(db db) {
 	r.db = db
 }
 
+// Set sets key value pair.
 func (r *ExtendedRepository) Set(key string, value []byte) {
 	r.cache.Set(key, value)
 	r.newData.Store(true)
 }
 
+// IsReady returns true if ExtendedRepository contains new data.
 func (r *ExtendedRepository) IsReady() bool {
 	return r.newData.Load()
 }
 
+// Ready set ExtendedRepository to the no new data state.
 func (r *ExtendedRepository) Ready() {
 	r.newData.Store(false)
 }
 
+// Ping checks db if it sets.
 func (r *ExtendedRepository) Ping(ctx context.Context) error {
 	if r.db == nil {
 		return nil
@@ -47,6 +56,10 @@ func (r *ExtendedRepository) Ping(ctx context.Context) error {
 	return r.db.Ping(ctx)
 }
 
+// Get returns data from repository and error if anything went wrong. If this entry doesn't exist it returns
+// nil, nil (I know, this is bad behavior, don't follow me).
+//
+// TODO(ASRafalsky): Do something about return nil, nil.
 func (r *ExtendedRepository) Get(ctx context.Context, key string) ([]byte, error) {
 	if val, ok := r.cache.Get(key); ok {
 		r.Set(key, val)
@@ -66,6 +79,7 @@ func (r *ExtendedRepository) Get(ctx context.Context, key string) ([]byte, error
 	return nil, nil
 }
 
+// Delete removes entry from repository by key and returns error if anything went wrong.
 func (r *ExtendedRepository) Delete(ctx context.Context, key string) error {
 	r.cache.Delete(key)
 	if r.db != nil {
@@ -76,6 +90,7 @@ func (r *ExtendedRepository) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
+// ForEach calls fn for each entry in the repository. And you know what? Yeah! It returns error if anything went wrong.
 func (r *ExtendedRepository) ForEach(ctx context.Context, fn func(k string, v []byte) error) error {
 	if r.db != nil {
 		if r.newData.Load() {
@@ -88,6 +103,8 @@ func (r *ExtendedRepository) ForEach(ctx context.Context, fn func(k string, v []
 	return r.cache.ForEach(ctx, fn)
 }
 
+// Size returns the number of entries in the repository. If it uses db it will be number entries from the db,
+// else from the cache.
 func (r *ExtendedRepository) Size() (int, error) {
 	if r.db != nil {
 		var (
@@ -103,6 +120,7 @@ func (r *ExtendedRepository) Size() (int, error) {
 	return r.cache.Size(), nil
 }
 
+// Sync syncs cache with db.
 func (r *ExtendedRepository) Sync(ctx context.Context) error {
 	if r.db == nil {
 		return nil
@@ -126,6 +144,7 @@ func (r *ExtendedRepository) Sync(ctx context.Context) error {
 	return withRetryOnErr(ctx, 3, func() error { return r.db.SetBatch(ctx, p) })
 }
 
+// CacheSize returns the number of entries in the cache.
 func (r *ExtendedRepository) CacheSize() int {
 	return r.cache.Size()
 }

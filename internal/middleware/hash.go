@@ -46,12 +46,9 @@ func (c *hashWriter) WriteHeader(statusCode int) {
 	c.w.WriteHeader(statusCode)
 }
 
-const (
-	defaultDataSZ = 4 * 1024        // 4 KB.
-	maxDataSz     = 1 * 1024 * 1024 // 1 MB
-)
+const maxDataSz = 1 * 1024 * 1024 // 1 MB
 
-var bufPoll = pool.NewLimitedPool(maxDataSz, defaultDataSZ)
+var bufPoll = pool.NewLimitedPool(maxDataSz)
 
 func WithSign(h http.HandlerFunc, key []byte, log logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

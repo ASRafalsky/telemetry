@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+// ProfilePostHandler starts profiling of app.
 func ProfilePostHandler(ctx context.Context, path string) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		_ = writeProfile(ctx, path+"heap-"+time.Now().Format(time.RFC3339), profileMem) // And I did it again.

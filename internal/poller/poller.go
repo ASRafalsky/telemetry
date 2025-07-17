@@ -1,3 +1,4 @@
+// A-a-a-a-a-a! Stop it!
 package poller
 
 import (
@@ -18,10 +19,12 @@ const (
 	counter = "counter"
 )
 
+// Config of poller.
 type Config struct {
 	Interval time.Duration
 }
 
+// Poll polls everything what you need. You really need it, believe me!
 func Poll(ctx context.Context,
 	fn func(ctx context.Context, r repository) error, cfg Config, repo repository, log logger) {
 	log.Info("Polling started with interval:", cfg.Interval.String())
@@ -40,6 +43,7 @@ func Poll(ctx context.Context,
 	}
 }
 
+// GetCounterMetrics collects counter metrics and saves them to the repo.
 func GetCounterMetrics(_ context.Context, repo repository) error {
 	name := counter + "PollCount"
 	cnt, ok := repo.Get(name)
@@ -53,6 +57,7 @@ func GetCounterMetrics(_ context.Context, repo repository) error {
 	return nil
 }
 
+// GetGaugeMetrics collects gauge metrics and saves them to the repo.
 func GetGaugeMetrics(_ context.Context, repo repository) error {
 	memStats := runtime.MemStats{}
 	runtime.ReadMemStats(&memStats)
@@ -88,6 +93,7 @@ func GetGaugeMetrics(_ context.Context, repo repository) error {
 	return nil
 }
 
+// GetPSMemMetrics collects memory metrics and saves them to the repo.
 func GetPSMemMetrics(_ context.Context, repo repository) error {
 	v, err := mem.VirtualMemory()
 	if err != nil {
@@ -98,6 +104,7 @@ func GetPSMemMetrics(_ context.Context, repo repository) error {
 	return nil
 }
 
+// GetPSCPUMetrics collects cpu metrics and saves them to the repo.
 func GetPSCPUMetrics(ctx context.Context, repo repository) error {
 	cpu, err := cpu.PercentWithContext(ctx, 0, true)
 	if err != nil {

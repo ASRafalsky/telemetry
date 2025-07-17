@@ -1,3 +1,4 @@
+// Package transport describes everything that we need to send and receive metrics.
 package transport
 
 import (
@@ -10,13 +11,16 @@ import (
 )
 
 //go:generate easyjson --all json.go
+
+// Metrics describes transport struct for metric values.
 type Metrics struct {
-	ID    string   `json:"id"`              // имя метрики
-	MType string   `json:"type"`            // параметр, принимающий значение gauge или counter
-	Delta *int64   `json:"delta,omitempty"` // значение метрики в случае передачи counter
-	Value *float64 `json:"value,omitempty"` // значение метрики в случае передачи gauge
+	ID    string   `json:"id"`              // Name of metric.
+	MType string   `json:"type"`            // Type of metric, gauge or counter.
+	Delta *int64   `json:"delta,omitempty"` // Value for counter type.
+	Value *float64 `json:"value,omitempty"` // Value for gauge type.
 }
 
+// DeserializeMetrics converts bytes buffer to the slice of Metrics and returns error if anything went wrong.
 func DeserializeMetrics(buf []byte) ([]Metrics, error) {
 
 	metricsCnt := bytes.Count(buf, []byte("{"))
@@ -50,6 +54,7 @@ func DeserializeMetrics(buf []byte) ([]Metrics, error) {
 	return nil, errors.New("failed to deserialize metrics")
 }
 
+// SerializeMetrics serializes Metrics to the byte slice (Are you surprised? I'm not.))).
 func SerializeMetrics(m *Metrics, w writer) error {
 	buf, err := easyjson.Marshal(m)
 	if err != nil {

@@ -18,6 +18,61 @@ var (
 	errGaugeNotFound   = errors.New("gauge value not found")
 )
 
+// SetDataTo sets data to repository and returns serialized metrics, http status code and error if something went wrong.
+func SetDataTo(ctx context.Context, repo repository, m transport.Metrics) ([]byte, int, error) {
+	switch m.MType {
+	case types.GaugeType:
+		switch {
+		case m.Value != nil:
+			dataBuf, err := gaugePostDataHandler(repo, m)
+			if err != nil {
+				return nil, http.StatusInternalServerError, err
+			}
+			return dataBuf, http.StatusOK, nil
+		case m.Delta != nil:
+			return nil, http.StatusBadRequest, errors.New("delta not supported for gauge")
+		default:
+			return nil, http.StatusBadRequest, errors.New("gaugePostDataHandler called with no data")
+		}
+	case types.CounterType:
+		switch {
+		case m.Delta != nil:
+			dataBuf, err := counterPostDataHandler(ctx, repo, m)
+			if err != nil {
+				return nil, http.StatusInternalServerError, err
+			}
+			return dataBuf, http.StatusOK, nil
+		case m.Value != nil:
+			return nil, http.StatusBadRequest, errors.New("value not supported for gauge")
+		default:
+			return nil, http.StatusBadRequest, errors.New("gaugePostDataHandler called with no data")
+		}
+	default:
+		return nil, http.StatusBadRequest, fmt.Errorf("type %s not supported", m.MType)
+	}
+}
+
+// GetDataFrom receives data from repository and returns serialized metrics, http status code and error,
+// if something went wrong.
+func GetDataFrom(ctx context.Context, repo repository, m transport.Metrics) ([]byte, int, error) {
+	switch m.MType {
+	case types.GaugeType:
+		dataBuf, err := gaugeGetDataHandler(ctx, repo, m.ID)
+		if err != nil {
+			return nil, http.StatusNotFound, err
+		}
+		return dataBuf, http.StatusOK, nil
+	case types.CounterType:
+		dataBuf, err := counterGetDataHandler(ctx, repo, m.ID)
+		if err != nil {
+			return nil, http.StatusNotFound, err
+		}
+		return dataBuf, http.StatusOK, nil
+	default:
+		return nil, http.StatusBadRequest, fmt.Errorf("type %s not supported", m.MType)
+	}
+}
+
 func counterPostDataHandler(ctx context.Context, repo repository, value transport.Metrics) ([]byte, error) {
 	name := types.CounterType + value.ID
 	buf, err := repo.Get(ctx, name)
@@ -69,58 +124,6 @@ func gaugePostDataHandler(repo repository, value transport.Metrics) ([]byte, err
 	}
 	repo.Set(types.GaugeType+value.ID, buf)
 	return buf, nil
-}
-
-func SetDataTo(ctx context.Context, repo repository, m transport.Metrics) ([]byte, int, error) {
-	switch m.MType {
-	case types.GaugeType:
-		switch {
-		case m.Value != nil:
-			dataBuf, err := gaugePostDataHandler(repo, m)
-			if err != nil {
-				return nil, http.StatusInternalServerError, err
-			}
-			return dataBuf, http.StatusOK, nil
-		case m.Delta != nil:
-			return nil, http.StatusBadRequest, errors.New("delta not supported for gauge")
-		default:
-			return nil, http.StatusBadRequest, errors.New("gaugePostDataHandler called with no data")
-		}
-	case types.CounterType:
-		switch {
-		case m.Delta != nil:
-			dataBuf, err := counterPostDataHandler(ctx, repo, m)
-			if err != nil {
-				return nil, http.StatusInternalServerError, err
-			}
-			return dataBuf, http.StatusOK, nil
-		case m.Value != nil:
-			return nil, http.StatusBadRequest, errors.New("value not supported for gauge")
-		default:
-			return nil, http.StatusBadRequest, errors.New("gaugePostDataHandler called with no data")
-		}
-	default:
-		return nil, http.StatusBadRequest, fmt.Errorf("type %s not supported", m.MType)
-	}
-}
-
-func GetDataFrom(ctx context.Context, repo repository, m transport.Metrics) ([]byte, int, error) {
-	switch m.MType {
-	case types.GaugeType:
-		dataBuf, err := gaugeGetDataHandler(ctx, repo, m.ID)
-		if err != nil {
-			return nil, http.StatusNotFound, err
-		}
-		return dataBuf, http.StatusOK, nil
-	case types.CounterType:
-		dataBuf, err := counterGetDataHandler(ctx, repo, m.ID)
-		if err != nil {
-			return nil, http.StatusNotFound, err
-		}
-		return dataBuf, http.StatusOK, nil
-	default:
-		return nil, http.StatusBadRequest, fmt.Errorf("type %s not supported", m.MType)
-	}
 }
 
 func getKeyList(repo repository) ([]string, error) {
