@@ -5,7 +5,7 @@ const (
 	DefaultDiagAddr       = ":8081"
 	DefaultDiagPath       = "./profile/"
 	DefaultDBAddr         = ""
-	DefaultLogLevel       = "error"
+	DefaultLogLevel       = "info"
 	DefaultDumpPath       = "./dump/dump"
 	DefaultDumpInterval   = 300
 	DefaultReportInterval = 10

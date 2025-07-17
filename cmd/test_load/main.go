@@ -60,7 +60,7 @@ func main() {
 			Addr: config.DefaultAddr,
 			Key:  "secret-key",
 		},
-		ReportPeriod: 100,
+		ReportPeriod: 50,
 		RateLimit:    0,
 	})
 	var (
@@ -68,7 +68,7 @@ func main() {
 		wg  sync.WaitGroup
 	)
 	timeout := 100 * time.Second
-	for range 10 {
+	for range 100 {
 		if ctx.Err() != nil {
 			return
 		}
@@ -106,23 +106,6 @@ func main() {
 			}
 			clientWg.Wait()
 		}()
-	}
-
-	time.Sleep(10 * time.Second)
-
-	client := httpclient.NewClient(httpclient.WithHTTPTimeout(timeout), httpclient.WithRetryCount(1000))
-	header := http.Header{
-		"Content-Type": []string{"text/plain"},
-	}
-	resp, err := client.Post("http://"+config.DefaultDiagAddr+"/profile/", nil, header)
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-	if err != nil {
-		log.Fatal(err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		log.Fatal(resp.Status)
 	}
 
 	go func() {

@@ -26,7 +26,7 @@ func updateCfg() (config.Server, error) {
 	flag.StringVar(&cfg.DB.DSN, "d", "", "database address")
 	flag.StringVar(&cfg.DB.MigrationsPath, "m", migrationPath, "path to migrations")
 	flag.StringVar(&cfg.DB.MigrationsTable, "t", "", "name of migration table, where migrator writes own data")
-	flag.StringVar(&cfg.Key, "k", "secret-key", "key for sign")
+	flag.StringVar(&cfg.Key, "k", "", "key for sign")
 	flag.Parse()
 
 	err := env.Parse(&cfg)
