@@ -17,11 +17,18 @@ import (
 	"github.com/ASRafalsky/telemetry/internal/middleware"
 	"github.com/ASRafalsky/telemetry/internal/repository"
 	"github.com/ASRafalsky/telemetry/internal/templates"
+	"github.com/ASRafalsky/telemetry/internal/utils"
 	"github.com/ASRafalsky/telemetry/pkg/cache"
 	"github.com/ASRafalsky/telemetry/pkg/log"
 )
 
+var (
+	buildVersion, buildDate, buildCommit string
+)
+
 func main() {
+	utils.PrintBuildInfo(buildVersion, buildDate, buildCommit)
+
 	cfg, err := updateCfg()
 	if err != nil {
 		panic(err)
