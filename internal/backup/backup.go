@@ -15,6 +15,7 @@ import (
 	"github.com/ASRafalsky/telemetry/internal/transport"
 )
 
+// DumpRepoToFile dumps data from repo to the file with path and mode.
 func DumpRepoToFile(path string, repo dataDumper, mode os.FileMode) (err error) {
 	if err = os.MkdirAll(filepath.Dir(path), addXPerm(mode)); err != nil {
 		return err
@@ -42,20 +43,10 @@ func DumpRepoToFile(path string, repo dataDumper, mode os.FileMode) (err error) 
 	return dump(zw, repo)
 }
 
-func dump(w writer, repo dataDumper) error {
-	if repo.CacheSize() == 0 {
-		return errors.New("repository is empty")
-	}
-	if err := repo.ForEach(context.Background(), func(k string, v []byte) error {
-		v = append(v, '\n')
-		_, err := w.Write(v)
-		return err
-	}); err != nil {
-		return err
-	}
-	return nil
-}
-
+// RestoreRepoFromFile data from dump file to repo.
+// path - path to dump file.
+// repo - repository instance.
+// remove - flag, if it is true we need to remove dump file after restoring.
 func RestoreRepoFromFile(path string, repo dataRestorer, remove bool) (err error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -85,6 +76,20 @@ func RestoreRepoFromFile(path string, repo dataRestorer, remove bool) (err error
 	}
 
 	return err
+}
+
+func dump(w writer, repo dataDumper) error {
+	if repo.CacheSize() == 0 {
+		return errors.New("repository is empty")
+	}
+	if err := repo.ForEach(context.Background(), func(k string, v []byte) error {
+		v = append(v, '\n')
+		_, err := w.Write(v)
+		return err
+	}); err != nil {
+		return err
+	}
+	return nil
 }
 
 func restore(r reader, repo dataRestorer) error {

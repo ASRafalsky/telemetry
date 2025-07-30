@@ -3,6 +3,7 @@ package transport
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"math/rand/v2"
 	"strconv"
 	"testing"
@@ -60,6 +61,39 @@ func TestSerializeMetrics(t *testing.T) {
 			require.Equal(t, *metricsList[i].Delta, *outputMetrics[i].Delta)
 		}
 	})
+}
+
+func BenchmarkSingleCustomConvertation(b *testing.B) {
+	var (
+		val   = rand.Float64()
+		delta = rand.Int64()
+	)
+	metric := Metrics{
+		MType: "MType",
+		ID:    "ID",
+		Value: &val,
+		Delta: &delta,
+	}
+
+	var (
+		outputMetrics []Metrics
+		err           error
+	)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		buf := bytes.NewBuffer(nil)
+		err = SerializeMetrics(&metric, buf)
+		if err != nil {
+			b.Fatal(err)
+		}
+		outputMetrics, err = DeserializeMetrics(buf.Bytes())
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.StopTimer()
+	require.Equal(b, *outputMetrics[0].Value, val)
+	require.Equal(b, *outputMetrics[0].Delta, delta)
 }
 
 func BenchmarkCustomConvertation(b *testing.B) {
@@ -132,4 +166,67 @@ func BenchmarkJSONConvertation(b *testing.B) {
 	}
 	b.StopTimer()
 	require.Len(b, outputMetrics, cnt)
+}
+
+func BenchmarkCompositeConvertation(b *testing.B) {
+	metricsList := make([]Metrics, cnt)
+	for i := range cnt {
+		var (
+			val   = rand.Float64()
+			delta = rand.Int64()
+		)
+		metricsList[i] = Metrics{
+			MType: "MType" + strconv.Itoa(i),
+			ID:    "ID" + strconv.Itoa(i),
+			Value: &val,
+			Delta: &delta,
+		}
+	}
+	require.Len(b, metricsList, cnt)
+	var (
+		outputMetrics []Metrics
+		buf           []byte
+		err           error
+	)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		buf, err = json.Marshal(metricsList)
+		if err != nil {
+			b.Fatal(err)
+		}
+		outputMetrics, err = DeserializeMetrics(buf)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.StopTimer()
+	require.Len(b, outputMetrics, cnt)
+}
+
+func ExampleSerializeMetrics() {
+	val := 123.456
+	delta := int64(789)
+	metricsList := []Metrics{
+		{
+			MType: "MType1",
+			ID:    "ID1",
+			Value: &val,
+		},
+		{
+			MType: "MType2",
+			ID:    "ID2",
+			Delta: &delta,
+		},
+	}
+
+	buf := bytes.NewBuffer(nil)
+	for _, m := range metricsList {
+		err := SerializeMetrics(&m, buf)
+		if err != nil {
+			panic(err)
+		}
+	}
+	fmt.Println(buf.String())
+	// Output:
+	// {"id":"ID1","type":"MType1","value":123.456}{"id":"ID2","type":"MType2","delta":789}
 }

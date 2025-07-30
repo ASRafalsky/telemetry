@@ -1,13 +1,14 @@
 package middleware
 
 import (
-	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"hash"
 	"io"
 	"net/http"
+
+	"github.com/ASRafalsky/telemetry/pkg/pool"
 )
 
 type hashWriter struct {
@@ -45,6 +46,10 @@ func (c *hashWriter) WriteHeader(statusCode int) {
 	c.w.WriteHeader(statusCode)
 }
 
+const maxDataSz = 1 * 1024 * 1024 // 1 MB
+
+var bufPoll = pool.NewLimitedPool(maxDataSz)
+
 func WithSign(h http.HandlerFunc, key []byte, log logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sign := r.Header.Get("HashSHA256")
@@ -58,13 +63,15 @@ func WithSign(h http.HandlerFunc, key []byte, log logger) http.HandlerFunc {
 		}
 
 		if sign != "" {
-			body, err := io.ReadAll(r.Body)
+			buf := bufPoll.Get()
+			defer bufPoll.Put(buf)
+			_, err := io.Copy(buf, r.Body)
 			if err != nil {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
-			r.Body = io.NopCloser(bytes.NewReader(body))
-			if _, err := signHash.Write(body); err != nil {
+
+			if _, err := signHash.Write(buf.Bytes()); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				log.Error("Failed to write hash", err.Error())
 				return
@@ -78,6 +85,7 @@ func WithSign(h http.HandlerFunc, key []byte, log logger) http.HandlerFunc {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
+			r.Body = io.NopCloser(buf)
 		}
 		h.ServeHTTP(w, r)
 	}

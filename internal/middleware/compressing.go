@@ -7,6 +7,7 @@ import (
 	"github.com/ASRafalsky/telemetry/pkg/compress"
 )
 
+// WithCompress compress data.
 func WithCompress(h http.HandlerFunc, log logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ow := w

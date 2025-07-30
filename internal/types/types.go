@@ -12,6 +12,11 @@ type (
 	Counter int64
 )
 
+const (
+	GaugeType   = "gauge"
+	CounterType = "counter"
+)
+
 // String returns Gauge as string.
 func (g Gauge) String() string {
 	return strconv.FormatFloat(float64(g), 'f', -1, 64)

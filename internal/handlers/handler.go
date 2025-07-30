@@ -13,14 +13,21 @@ import (
 
 	"github.com/ASRafalsky/telemetry/internal/transport"
 	"github.com/ASRafalsky/telemetry/internal/types"
+	"github.com/ASRafalsky/telemetry/pkg/pool"
 )
 
 type dataHandler func(ctx context.Context, repository repository, metrics transport.Metrics) ([]byte, int, error)
 
+const maxDataSz = 1 * 1024 * 1024 // 1 MB
+
+var handlersPoll = pool.NewLimitedPool(maxDataSz)
+
 func JSONPostHandler(repo repository, fn dataHandler) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
-		buf, err := io.ReadAll(req.Body)
-		if err != nil {
+		buf := handlersPoll.Get()
+		defer handlersPoll.Put(buf)
+		n, err := io.Copy(buf, req.Body)
+		if err != nil || n == 0 {
 			res.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -28,7 +35,8 @@ func JSONPostHandler(repo repository, fn dataHandler) func(http.ResponseWriter, 
 			// Handled at the logging level.
 			_ = req.Body.Close()
 		}()
-		metricList, err := transport.DeserializeMetrics(buf)
+
+		metricList, err := transport.DeserializeMetrics(buf.Bytes())
 		if err != nil {
 			res.WriteHeader(http.StatusInternalServerError)
 			return
@@ -39,14 +47,14 @@ func JSONPostHandler(repo repository, fn dataHandler) func(http.ResponseWriter, 
 		}
 		for _, m := range metricList {
 			var status int
-			buf, status, err = fn(req.Context(), repo, m)
+			bufToWrite, status, err := fn(req.Context(), repo, m)
 			if err != nil {
 				res.WriteHeader(status)
 				return
 			}
 
 			res.Header().Set("Content-Type", "application/json")
-			if _, err = res.Write(buf); err != nil {
+			if _, err = res.Write(bufToWrite); err != nil {
 				res.WriteHeader(http.StatusInternalServerError)
 				return
 			}
@@ -72,7 +80,7 @@ func GaugePostHandler(repo repository) func(http.ResponseWriter, *http.Request) 
 
 		gVal := float64(value)
 		if _, err := gaugePostDataHandler(repo, transport.Metrics{
-			MType: Gauge,
+			MType: types.GaugeType,
 			ID:    strings.ToLower(key),
 			Value: &gVal,
 		}); err != nil {
@@ -130,7 +138,7 @@ func CounterPostHandler(repo repository) func(http.ResponseWriter, *http.Request
 
 		delta := int64(value)
 		if _, err := counterPostDataHandler(req.Context(), repo, transport.Metrics{
-			MType: Counter,
+			MType: types.CounterType,
 			ID:    strings.ToLower(key),
 			Delta: &delta,
 		}); err != nil {

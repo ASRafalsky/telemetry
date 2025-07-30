@@ -7,6 +7,7 @@ import (
 	"github.com/ASRafalsky/telemetry/pkg/log"
 )
 
+// BackupRepo maintains periodic backup data to file.
 func BackupRepo(
 	ctx context.Context, data dataDumper, interval int, path string, l log.Logger,
 ) {
@@ -41,6 +42,7 @@ func BackupRepo(
 	}
 }
 
+// RestoreRepo restores data from the dump file to the repo.
 func RestoreRepo(path string, repo dataRestorer) error {
 	return RestoreRepoFromFile(path, repo, false)
 }

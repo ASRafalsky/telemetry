@@ -5,13 +5,13 @@ import (
 	"sync"
 )
 
-// MemStorage kv cache.
+// MemStorage synced kv cache.
 type MemStorage[K comparable, V any] struct {
 	mx      sync.RWMutex
 	storage map[K]V
 }
 
-// New creates new MemStorage unit.
+// New creates new MemStorage instance.
 func New[K comparable, V any]() *MemStorage[K, V] {
 	m := MemStorage[K, V]{
 		storage: make(map[K]V),
@@ -55,6 +55,7 @@ func (m *MemStorage[K, V]) Size() int {
 	return len(m.storage)
 }
 
+// ForEach calls fn for each entry in the cache and returns error if anything failed.
 func (m *MemStorage[K, V]) ForEach(ctx context.Context, fn func(k K, v V) error) error {
 	m.mx.Lock()
 	defer m.mx.Unlock()

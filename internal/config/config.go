@@ -2,6 +2,8 @@ package config
 
 const (
 	DefaultAddr           = ":8080"
+	DefaultDiagAddr       = ":8081"
+	DefaultDiagPath       = "./profile/"
 	DefaultDBAddr         = ""
 	DefaultLogLevel       = "info"
 	DefaultDumpPath       = "./dump/dump"
@@ -27,9 +29,15 @@ type DB struct {
 type Server struct {
 	CommonFields
 	DB          DB
+	Diag        Diagnostics
 	DumpPath    string `env:"FILE_STORAGE_PATH"`
 	StorePeriod int    `env:"STORE_INTERVAL"`
 	Restore     bool   `env:"RESTORE"`
+}
+
+type Diagnostics struct {
+	Addr string `env:"DIAG_ADDRESS"`
+	Path string `env:"DIAG_PATH"`
 }
 
 type Agent struct {

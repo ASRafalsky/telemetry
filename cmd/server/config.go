@@ -32,3 +32,15 @@ func updateCfg() (config.Server, error) {
 	err := env.Parse(&cfg)
 	return cfg, err
 }
+
+func newDiagnosticCfg(_ config.Server) config.Server {
+	return config.Server{
+		CommonFields: config.CommonFields{
+			Addr: config.DefaultDiagAddr,
+		},
+		Diag: config.Diagnostics{
+			Addr: config.DefaultDiagAddr,
+			Path: config.DefaultDiagPath,
+		},
+	}
+}

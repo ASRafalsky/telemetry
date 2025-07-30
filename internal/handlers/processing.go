@@ -10,11 +10,7 @@ import (
 	"github.com/mailru/easyjson"
 
 	"github.com/ASRafalsky/telemetry/internal/transport"
-)
-
-const (
-	Gauge   = "gauge"
-	Counter = "counter"
+	"github.com/ASRafalsky/telemetry/internal/types"
 )
 
 var (
@@ -22,8 +18,63 @@ var (
 	errGaugeNotFound   = errors.New("gauge value not found")
 )
 
+// SetDataTo sets data to repository and returns serialized metrics, http status code and error if something went wrong.
+func SetDataTo(ctx context.Context, repo repository, m transport.Metrics) ([]byte, int, error) {
+	switch m.MType {
+	case types.GaugeType:
+		switch {
+		case m.Value != nil:
+			dataBuf, err := gaugePostDataHandler(repo, m)
+			if err != nil {
+				return nil, http.StatusInternalServerError, err
+			}
+			return dataBuf, http.StatusOK, nil
+		case m.Delta != nil:
+			return nil, http.StatusBadRequest, errors.New("delta not supported for gauge")
+		default:
+			return nil, http.StatusBadRequest, errors.New("gaugePostDataHandler called with no data")
+		}
+	case types.CounterType:
+		switch {
+		case m.Delta != nil:
+			dataBuf, err := counterPostDataHandler(ctx, repo, m)
+			if err != nil {
+				return nil, http.StatusInternalServerError, err
+			}
+			return dataBuf, http.StatusOK, nil
+		case m.Value != nil:
+			return nil, http.StatusBadRequest, errors.New("value not supported for gauge")
+		default:
+			return nil, http.StatusBadRequest, errors.New("gaugePostDataHandler called with no data")
+		}
+	default:
+		return nil, http.StatusBadRequest, fmt.Errorf("type %s not supported", m.MType)
+	}
+}
+
+// GetDataFrom receives data from repository and returns serialized metrics, http status code and error,
+// if something went wrong.
+func GetDataFrom(ctx context.Context, repo repository, m transport.Metrics) ([]byte, int, error) {
+	switch m.MType {
+	case types.GaugeType:
+		dataBuf, err := gaugeGetDataHandler(ctx, repo, m.ID)
+		if err != nil {
+			return nil, http.StatusNotFound, err
+		}
+		return dataBuf, http.StatusOK, nil
+	case types.CounterType:
+		dataBuf, err := counterGetDataHandler(ctx, repo, m.ID)
+		if err != nil {
+			return nil, http.StatusNotFound, err
+		}
+		return dataBuf, http.StatusOK, nil
+	default:
+		return nil, http.StatusBadRequest, fmt.Errorf("type %s not supported", m.MType)
+	}
+}
+
 func counterPostDataHandler(ctx context.Context, repo repository, value transport.Metrics) ([]byte, error) {
-	name := Counter + value.ID
+	name := types.CounterType + value.ID
 	buf, err := repo.Get(ctx, name)
 	if err != nil {
 		return nil, err
@@ -45,7 +96,7 @@ func counterPostDataHandler(ctx context.Context, repo repository, value transpor
 }
 
 func gaugeGetDataHandler(ctx context.Context, repo repository, key string) ([]byte, error) {
-	buf, err := repo.Get(ctx, Gauge+key)
+	buf, err := repo.Get(ctx, types.GaugeType+key)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +107,7 @@ func gaugeGetDataHandler(ctx context.Context, repo repository, key string) ([]by
 }
 
 func counterGetDataHandler(ctx context.Context, repo repository, key string) ([]byte, error) {
-	buf, err := repo.Get(ctx, Counter+key)
+	buf, err := repo.Get(ctx, types.CounterType+key)
 	if err != nil {
 		return nil, err
 	}
@@ -71,60 +122,8 @@ func gaugePostDataHandler(repo repository, value transport.Metrics) ([]byte, err
 	if err != nil {
 		return nil, err
 	}
-	repo.Set(Gauge+value.ID, buf)
+	repo.Set(types.GaugeType+value.ID, buf)
 	return buf, nil
-}
-
-func SetDataTo(ctx context.Context, repo repository, m transport.Metrics) ([]byte, int, error) {
-	switch m.MType {
-	case Gauge:
-		switch {
-		case m.Value != nil:
-			dataBuf, err := gaugePostDataHandler(repo, m)
-			if err != nil {
-				return nil, http.StatusInternalServerError, err
-			}
-			return dataBuf, http.StatusOK, nil
-		case m.Delta != nil:
-			return nil, http.StatusBadRequest, errors.New("delta not supported for gauge")
-		default:
-			return nil, http.StatusBadRequest, errors.New("gaugePostDataHandler called with no data")
-		}
-	case Counter:
-		switch {
-		case m.Delta != nil:
-			dataBuf, err := counterPostDataHandler(ctx, repo, m)
-			if err != nil {
-				return nil, http.StatusInternalServerError, err
-			}
-			return dataBuf, http.StatusOK, nil
-		case m.Value != nil:
-			return nil, http.StatusBadRequest, errors.New("value not supported for gauge")
-		default:
-			return nil, http.StatusBadRequest, errors.New("gaugePostDataHandler called with no data")
-		}
-	default:
-		return nil, http.StatusBadRequest, fmt.Errorf("type %s not supported", m.MType)
-	}
-}
-
-func GetDataFrom(ctx context.Context, repo repository, m transport.Metrics) ([]byte, int, error) {
-	switch m.MType {
-	case Gauge:
-		dataBuf, err := gaugeGetDataHandler(ctx, repo, m.ID)
-		if err != nil {
-			return nil, http.StatusNotFound, err
-		}
-		return dataBuf, http.StatusOK, nil
-	case Counter:
-		dataBuf, err := counterGetDataHandler(ctx, repo, m.ID)
-		if err != nil {
-			return nil, http.StatusNotFound, err
-		}
-		return dataBuf, http.StatusOK, nil
-	default:
-		return nil, http.StatusBadRequest, fmt.Errorf("type %s not supported", m.MType)
-	}
 }
 
 func getKeyList(repo repository) ([]string, error) {
@@ -135,10 +134,10 @@ func getKeyList(repo repository) ([]string, error) {
 	result := make([]string, sz)
 	_ = repo.ForEach(context.Background(), func(k string, _ []byte) error {
 		switch {
-		case strings.HasPrefix(k, Gauge):
-			result = append(result, strings.TrimPrefix(k, Gauge))
-		case strings.HasPrefix(k, Counter):
-			result = append(result, strings.TrimPrefix(k, Counter))
+		case strings.HasPrefix(k, types.GaugeType):
+			result = append(result, strings.TrimPrefix(k, types.GaugeType))
+		case strings.HasPrefix(k, types.CounterType):
+			result = append(result, strings.TrimPrefix(k, types.CounterType))
 		default:
 			return nil
 		}

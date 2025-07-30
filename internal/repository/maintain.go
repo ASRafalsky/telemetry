@@ -9,6 +9,7 @@ import (
 	"github.com/ASRafalsky/telemetry/pkg/log"
 )
 
+// Maintain maintains all repository processing. It syncs repository with DB and do backup according to cfg.
 func (r *ExtendedRepository) Maintain(ctx context.Context, cfg config.Server, l log.Logger) {
 	if cfg.Restore {
 		if err := backup.RestoreRepo(cfg.DumpPath, r); err != nil {

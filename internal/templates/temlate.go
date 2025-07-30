@@ -4,6 +4,7 @@ import (
 	"html/template"
 )
 
+// PrepareTemplate prepares html template.
 func PrepareTemplate() *template.Template {
 	tmpl := `
 <!DOCTYPE html>
