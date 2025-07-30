@@ -1,3 +1,4 @@
+// Package backup does backup of the data.
 package backup
 
 import (

@@ -1,3 +1,4 @@
+// Package handlers - all handlers that we need.
 package handlers
 
 import (
