@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// SignCheck compares sha256 hmac with key for data from buf with sign.
+// For tests.
 func SignCheck(t *testing.T, buf, key []byte, sign string) {
 	t.Helper()
 

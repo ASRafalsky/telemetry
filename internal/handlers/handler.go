@@ -18,12 +18,9 @@ import (
 
 type dataHandler func(ctx context.Context, repository repository, metrics transport.Metrics) ([]byte, int, error)
 
-const (
-	defaultDataSZ = 4 * 1024        // 4 KB.
-	maxDataSz     = 1 * 1024 * 1024 // 1 MB
-)
+const maxDataSz = 1 * 1024 * 1024 // 1 MB
 
-var handlersPoll = pool.NewLimitedPool(maxDataSz, defaultDataSZ)
+var handlersPoll = pool.NewLimitedPool(maxDataSz)
 
 func JSONPostHandler(repo repository, fn dataHandler) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {

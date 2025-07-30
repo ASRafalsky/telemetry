@@ -29,13 +29,15 @@ const (
 	counter = "counter"
 )
 
+// Config for send data.
 type Config struct {
-	Key       string
-	Address   string
-	RateLimit int
-	Interval  time.Duration
+	Key       string        // Key - key for sign data.
+	Address   string        // Address - dst address of data.
+	RateLimit int           // RateLimit - rate limit for send data.
+	Interval  time.Duration // Interval - period send data.
 }
 
+// Send sends data from repo with mType through client to the dst from cfg.
 func Send(ctx context.Context, mType string, cfg Config, client *httpclient.Client, repo repository, log logger) {
 	log.Info("Reporeter started with interval:", cfg.Interval.String())
 	log.Info("Reporeter started with rate limit:", strconv.Itoa(cfg.RateLimit))
