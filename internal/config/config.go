@@ -1,3 +1,4 @@
+// Package config contains agent and server config structs.
 package config
 
 const (

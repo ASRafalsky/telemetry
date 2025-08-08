@@ -8,6 +8,7 @@ import (
 
 	"github.com/ASRafalsky/telemetry/internal/poller"
 	"github.com/ASRafalsky/telemetry/internal/reporter"
+	"github.com/ASRafalsky/telemetry/internal/utils"
 	"github.com/ASRafalsky/telemetry/pkg/cache"
 	"github.com/ASRafalsky/telemetry/pkg/log"
 )
@@ -17,7 +18,13 @@ const (
 	counter = "counter"
 )
 
+var (
+	buildVersion, buildDate, buildCommit string
+)
+
 func main() {
+	utils.PrintBuildInfo(buildVersion, buildDate, buildCommit)
+
 	cfg, err := updateCfg()
 	if err != nil {
 		panic(err)

@@ -1,3 +1,4 @@
+// Package diagnostic contains useful things for profiling.
 package diagnostic
 
 import (

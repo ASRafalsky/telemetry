@@ -1,4 +1,4 @@
-// A-a-a-a-a-a! Stop it!
+// Package poller... A-a-a-a-a-a! Stop it!
 package poller
 
 import (

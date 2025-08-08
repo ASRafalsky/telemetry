@@ -1,3 +1,4 @@
+// Package reporter - sender package.
 package reporter
 
 import (

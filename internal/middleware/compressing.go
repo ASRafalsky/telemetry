@@ -1,3 +1,4 @@
+// Package middleware - contains hashing, logging and compressing middleware.
 package middleware
 
 import (

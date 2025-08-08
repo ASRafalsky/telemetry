@@ -1,3 +1,4 @@
+// Package postgres contains Postgres db interaction things.
 package postgres
 
 import (
@@ -5,7 +6,6 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/golang-migrate/migrate/v4"
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -14,7 +14,6 @@ import (
 
 type DB struct {
 	*sql.DB
-	m migrate.Migrate
 }
 
 var (
