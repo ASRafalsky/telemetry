@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/hmac"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
@@ -488,10 +490,19 @@ func Test_JSON_encoding_signed(t *testing.T) {
 	repo := repository.NewExtendedRepository(cache.New[string, []byte]())
 	cfg := config.Server{
 		CommonFields: config.CommonFields{
-			Key: string(key),
+			Key:    string(key),
+			Crypto: "./testdata/private.key",
 		},
 	}
-	srv := httptest.NewServer(middleware.WithLogging(newRouter(repo, cfg, Log), Log))
+	cfg.PrivateKey, err = utils.ParseRSAPrivateKey(cfg.Crypto)
+	require.NoError(t, err)
+	require.NotNil(t, cfg.PrivateKey)
+	require.NoError(t, cfg.PrivateKey.Validate())
+
+	srv := httptest.NewServer(middleware.WithLogging(
+		middleware.WithSign(
+			middleware.Decrypt(
+				newRouter(repo, cfg, Log), cfg.PrivateKey), []byte(cfg.Key), Log), Log))
 	defer srv.Close()
 
 	// Create a new HTTP client with a default timeout
@@ -685,16 +696,20 @@ func Test_JSON_encoding_signed(t *testing.T) {
 			expStatusCode: http.StatusBadRequest,
 		},
 	}
+	pubKey, err := utils.ParseRSAPublicKey("./testdata/public.key")
+	require.NoError(t, err)
 
 	for _, tc := range ttJSONUpdate {
 		t.Run(tc.name+"_response_encoding", func(t *testing.T) {
 			buf, err := easyjson.Marshal(tc.data)
 			require.NoError(t, err)
+			cipherdata, err := rsa.EncryptPKCS1v15(rand.Reader, pubKey, buf)
+			require.NoError(t, err)
 			h := hmac.New(sha256.New, key)
-			_, err = h.Write(buf)
+			_, err = h.Write(cipherdata)
 			require.NoError(t, err)
 			header.Set("HashSHA256", hex.EncodeToString(h.Sum(nil)))
-			resp, err := client.Post(tc.url, bytes.NewReader(buf), header)
+			resp, err := client.Post(tc.url, bytes.NewReader(cipherdata), header)
 			require.NoError(t, err)
 			require.Equal(t, tc.expStatusCode, resp.StatusCode)
 			if tc.expStatusCode == http.StatusOK {
@@ -726,11 +741,13 @@ func Test_JSON_encoding_signed(t *testing.T) {
 		}
 		require.NoError(t, zr.Close())
 		header.Set("Content-Encoding", "gzip")
+		cipherdata, err := rsa.EncryptPKCS1v15(rand.Reader, pubKey, bufToSend.Bytes())
+		require.NoError(t, err)
 		h := hmac.New(sha256.New, key)
-		_, err = h.Write(bufToSend.Bytes())
+		_, err = h.Write(cipherdata)
 		require.NoError(t, err)
 		header.Set("HashSHA256", hex.EncodeToString(h.Sum(nil)))
-		resp, err := client.Post(srv.URL+"/updates/", bufToSend, header)
+		resp, err := client.Post(srv.URL+"/updates/", bytes.NewReader(cipherdata), header)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 		body, err := io.ReadAll(resp.Body)
@@ -751,11 +768,13 @@ func Test_JSON_encoding_signed(t *testing.T) {
 		}
 		require.NoError(t, zr.Close())
 		header.Set("Content-Encoding", "gzip")
+		cipherdata, err := rsa.EncryptPKCS1v15(rand.Reader, pubKey, bufToSend.Bytes())
+		require.NoError(t, err)
 		h := hmac.New(sha256.New, []byte("kek"))
-		_, err = h.Write(bufToSend.Bytes())
+		_, err = h.Write(cipherdata)
 		require.NoError(t, err)
 		header.Set("HashSHA256", hex.EncodeToString(h.Sum(nil)))
-		resp, err := client.Post(srv.URL+"/updates/", bufToSend, header)
+		resp, err := client.Post(srv.URL+"/updates/", bytes.NewReader(cipherdata), header)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 		require.NoError(t, resp.Body.Close())
@@ -880,11 +899,13 @@ func Test_JSON_encoding_signed(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, zr.Close())
 			header.Set("Content-Encoding", "gzip")
+			cipherdata, err := rsa.EncryptPKCS1v15(rand.Reader, pubKey, bufToSend.Bytes())
+			require.NoError(t, err)
 			h := hmac.New(sha256.New, key)
-			_, err = h.Write(bufToSend.Bytes())
+			_, err = h.Write(cipherdata)
 			require.NoError(t, err)
 			header.Set("HashSHA256", hex.EncodeToString(h.Sum(nil)))
-			resp, err := client.Post(tc.url, bufToSend, header)
+			resp, err := client.Post(tc.url, bytes.NewReader(cipherdata), header)
 			require.NoError(t, err)
 			require.Equal(t, tc.expStatusCode, resp.StatusCode)
 			if tc.expStatusCode == http.StatusOK {
@@ -916,7 +937,11 @@ func Test_POST_GET(t *testing.T) {
 			Key: string(key),
 		},
 	}
-	srv := httptest.NewServer(middleware.WithLogging(newRouter(repo, cfg, Log), Log))
+
+	srv := httptest.NewServer(middleware.WithLogging(
+		middleware.WithSign(
+			middleware.Decrypt(
+				newRouter(repo, cfg, Log), cfg.PrivateKey), []byte(cfg.Key), Log), Log))
 	defer srv.Close()
 	// Create a new HTTP client with a default timeout
 	timeout := 1000 * time.Millisecond
@@ -926,7 +951,6 @@ func Test_POST_GET(t *testing.T) {
 		"Content-Type":    []string{"text/plain"},
 		"Accept-Encoding": []string{""},
 	}
-
 	expCounter := 0
 	for i := range 3 {
 		expCounter += i

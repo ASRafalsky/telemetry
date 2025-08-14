@@ -6,6 +6,8 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -32,10 +34,11 @@ const (
 
 // Config for send data.
 type Config struct {
-	Key       string        // Key - key for sign data.
-	Address   string        // Address - dst address of data.
-	RateLimit int           // RateLimit - rate limit for send data.
-	Interval  time.Duration // Interval - period send data.
+	Key       string         // Key - key for sign data.
+	Address   string         // Address - dst address of data.
+	RateLimit int            // RateLimit - rate limit for send data.
+	Interval  time.Duration  // Interval - period send data.
+	PubKey    *rsa.PublicKey // PubKey - public key for encryption.
 }
 
 // Send sends data from repo with mType through client to the dst from cfg.
@@ -77,7 +80,15 @@ func Send(ctx context.Context, mType string, cfg Config, client *httpclient.Clie
 			}
 			header.Set("Content-Encoding", "gzip")
 
-			if signature, err := sign(bufToSend.Bytes(), []byte(cfg.Key)); err != nil {
+			cipherdata, errEnc := rsa.EncryptPKCS1v15(rand.Reader, cfg.PubKey, bufToSend.Bytes())
+			if errEnc != nil {
+				err = multierr.Append(err, fmt.Errorf("failed to encrypt data: %w", errEnc))
+				log.Error("[send/json] failed to encrypt data for", mType, err.Error())
+				cancel()
+				continue
+			}
+
+			if signature, err := sign(cipherdata, []byte(cfg.Key)); err != nil {
 				log.Error("[send/json] failed to sign data for", mType, err.Error())
 				cancel()
 				continue
@@ -86,7 +97,7 @@ func Send(ctx context.Context, mType string, cfg Config, client *httpclient.Clie
 			}
 
 			if err := withRetryOnErr(sendCtx, 3, func() error {
-				return sendDataTo("/updates/", cfg, header, bufToSend, client)
+				return sendDataTo("/updates/", cfg, header, bytes.NewReader(cipherdata), client)
 			}); err != nil {
 				log.Error("[send/json] failed to send data] for", mType, err.Error())
 			}

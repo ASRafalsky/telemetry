@@ -9,11 +9,11 @@ import (
 
 // BackupRepo maintains periodic backup data to file.
 func BackupRepo(
-	ctx context.Context, data dataDumper, interval int, path string, l log.Logger,
+	ctx context.Context, data dataDumper, interval time.Duration, path string, l log.Logger,
 ) {
 	timeInt := 500 * time.Millisecond
 	if interval > 0 {
-		timeInt = time.Duration(interval) * time.Second
+		timeInt = interval
 	}
 	l.Info("Backuping repository started with interval:", timeInt.String(), "path:", path)
 	ticker := time.NewTicker(timeInt)

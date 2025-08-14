@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -15,11 +16,13 @@ func TestUpdateCfg_Default(t *testing.T) {
 		CommonFields: config.CommonFields{
 			Addr:     config.DefaultAddr,
 			LogLevel: config.DefaultLogLevel,
-			LogPath:  "",
+			LogPath:  config.DefaultEmptyPath,
 		},
-		ReportPeriod:  config.DefaultReportInterval,
-		PollingPeriod: config.DefaultPollInterval,
-		RateLimit:     config.DefaultRateLimit,
+		ReportPeriodStr:  config.DefaultReportInterval,
+		PollingPeriodStr: config.DefaultPollInterval,
+		ReportPeriod:     config.DefaultReportIntervalTime,
+		PollingPeriod:    config.DefaultPollIntervalTime,
+		RateLimit:        config.DefaultEmptyValue,
 	}
 	os.Args = []string{"cmd"}
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
@@ -37,8 +40,8 @@ func TestUpdateCfg_FlagPriority(t *testing.T) {
 		reportPeriod     = "111"
 		pollingPeriod    = "222"
 		rateLimit        = "333"
-		reportPeriodNum  = 111
-		pollingPeriodNum = 222
+		reportPeriodNum  = time.Duration(111) * time.Second
+		pollingPeriodNum = time.Duration(222) * time.Second
 		rateLimitNum     = 333
 	)
 	os.Args = []string{"agent",
@@ -62,9 +65,11 @@ func TestUpdateCfg_FlagPriority(t *testing.T) {
 			LogPath:  logPath,
 			Key:      secret,
 		},
-		ReportPeriod:  reportPeriodNum,
-		PollingPeriod: pollingPeriodNum,
-		RateLimit:     rateLimitNum,
+		ReportPeriodStr:  reportPeriod,
+		PollingPeriodStr: pollingPeriod,
+		ReportPeriod:     reportPeriodNum,
+		PollingPeriod:    pollingPeriodNum,
+		RateLimit:        rateLimitNum,
 	}
 
 	require.Equal(t, expectedCfg, cfg)

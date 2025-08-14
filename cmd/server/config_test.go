@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -17,15 +18,20 @@ func TestUpdateCfg_Default(t *testing.T) {
 		CommonFields: config.CommonFields{
 			Addr:     config.DefaultAddr,
 			LogLevel: config.DefaultLogLevel,
-			LogPath:  "",
+			LogPath:  config.DefaultEmptyPath,
 		},
 		DB: config.DB{
 			DSN:            config.DefaultDBAddr,
 			MigrationsPath: migrationPath(t),
 		},
-		DumpPath:    config.DefaultDumpPath,
-		StorePeriod: config.DefaultDumpInterval,
-		Restore:     false,
+		Diag: config.Diagnostics{
+			Addr: config.DefaultDiagAddr,
+			Path: config.DefaultDiagPath,
+		},
+		DumpPath:       config.DefaultDumpPath,
+		StorePeriodStr: config.DefaultDumpInterval,
+		StorePeriod:    time.Duration(300) * time.Second,
+		Restore:        false,
 	}
 
 	os.Args = []string{"cmd"}
@@ -46,7 +52,7 @@ func TestUpdateCfg_EnvVarPriority(t *testing.T) {
 		migrationTable = "env_migration_table"
 		dumpPath       = "/env/path/to/dump"
 		storePeriod    = "555"
-		storePeriodNum = 555
+		storePeriodNum = time.Duration(555) * time.Second
 		restore        = "true"
 	)
 
@@ -146,9 +152,14 @@ func TestUpdateCfg_FlagPriority(t *testing.T) {
 			DSN:            dbAddr,
 			MigrationsPath: migrationPath(t),
 		},
-		DumpPath:    config.DefaultDumpPath,
-		StorePeriod: config.DefaultDumpInterval,
-		Restore:     true,
+		Diag: config.Diagnostics{
+			Addr: config.DefaultDiagAddr,
+			Path: config.DefaultDiagPath,
+		},
+		DumpPath:       config.DefaultDumpPath,
+		StorePeriodStr: config.DefaultDumpInterval,
+		StorePeriod:    time.Duration(300) * time.Second,
+		Restore:        true,
 	}
 
 	require.Equal(t, expectedSrvCfg, cfg)

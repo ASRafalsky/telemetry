@@ -1,7 +1,9 @@
 package middleware
 
 import (
+	"bytes"
 	"crypto/hmac"
+	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/hex"
 	"hash"
@@ -50,7 +52,7 @@ const maxDataSz = 1 * 1024 * 1024 // 1 MB
 
 var bufPoll = pool.NewLimitedPool(maxDataSz)
 
-func WithSign(h http.HandlerFunc, key []byte, log logger) http.HandlerFunc {
+func WithSign(h http.Handler, key []byte, log logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sign := r.Header.Get("HashSHA256")
 		var signHash hash.Hash
@@ -87,6 +89,36 @@ func WithSign(h http.HandlerFunc, key []byte, log logger) http.HandlerFunc {
 			}
 			r.Body = io.NopCloser(buf)
 		}
+		h.ServeHTTP(w, r)
+	}
+}
+
+func Decrypt(h http.Handler, key *rsa.PrivateKey) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if key == nil || r.ContentLength == 0 {
+			h.ServeHTTP(w, r)
+			return
+		}
+
+		in := bufPoll.Get()
+		defer bufPoll.Put(in)
+		_, err := io.Copy(in, r.Body)
+		if err != nil {
+			if err == io.EOF {
+				h.ServeHTTP(w, r)
+				return
+			}
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		out, err := key.Decrypt(nil, in.Bytes(), nil)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		r.Body = io.NopCloser(bytes.NewBuffer(out))
 		h.ServeHTTP(w, r)
 	}
 }

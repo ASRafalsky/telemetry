@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"flag"
+	"fmt"
 	"time"
 
 	"github.com/caarlos0/env/v10"
@@ -9,34 +11,57 @@ import (
 	"github.com/ASRafalsky/telemetry/internal/config"
 	"github.com/ASRafalsky/telemetry/internal/poller"
 	"github.com/ASRafalsky/telemetry/internal/reporter"
+	"github.com/ASRafalsky/telemetry/internal/utils"
 )
 
 func updateCfg() (config.Agent, error) {
-	cfg := config.Agent{}
-	flag.StringVar(&cfg.Addr, "a", config.DefaultAddr, "address and port to run agent")
-	flag.StringVar(&cfg.LogLevel, "ll", config.DefaultLogLevel, "log level")
-	flag.StringVar(&cfg.LogPath, "f", "", "log file path")
-	flag.StringVar(&cfg.Key, "k", "", "key for sign")
-	flag.IntVar(&cfg.ReportPeriod, "r", config.DefaultReportInterval, "send data time interval")
-	flag.IntVar(&cfg.PollingPeriod, "p", config.DefaultPollInterval, "get data time interval")
-	flag.IntVar(&cfg.RateLimit, "l", config.DefaultRateLimit, "rate limit")
+	cfg, errReadCfg := config.ReadCfg(config.DefaultAgent())
+	if errReadCfg != nil {
+		cfg = config.DefaultAgent()
+	}
+	if errors.Is(errReadCfg, config.ErrEmptyCfgPath) {
+		errReadCfg = nil
+	}
+	flag.StringVar(&cfg.Addr, "a", cfg.Addr, "address and port to run agent")
+	flag.StringVar(&cfg.LogLevel, "ll", cfg.LogLevel, "log level")
+	flag.StringVar(&cfg.LogPath, "f", cfg.LogPath, "log file path")
+	flag.StringVar(&cfg.Key, "k", cfg.Key, "key for sign")
+	flag.StringVar(&cfg.ReportPeriodStr, "r", cfg.ReportPeriodStr, "send data time interval")
+	flag.StringVar(&cfg.PollingPeriodStr, "p", cfg.PollingPeriodStr, "get data time interval")
+	flag.IntVar(&cfg.RateLimit, "l", cfg.RateLimit, "rate limit")
+	flag.StringVar(&cfg.Crypto, "crypto-key", cfg.Crypto, "public key path")
 	flag.Parse()
 
 	err := env.Parse(&cfg)
-	return cfg, err
+	if err != nil {
+		return config.Agent{}, err
+	}
+
+	if err = cfg.ParseDuration(); err != nil {
+		return config.Agent{}, err
+	}
+
+	return cfg, nil
 }
 
 func newPollerCfg(cfg config.Agent) poller.Config {
 	return poller.Config{
-		Interval: time.Duration(cfg.PollingPeriod) * time.Second,
+		Interval: cfg.PollingPeriod,
 	}
 }
 
 func newSenderCfg(cfg config.Agent) reporter.Config {
-	return reporter.Config{
-		Interval:  time.Duration(cfg.ReportPeriod) * time.Second,
+	res := reporter.Config{
+		Interval:  cfg.ReportPeriod * time.Second,
 		Address:   "http://" + cfg.Addr,
 		Key:       cfg.Key,
 		RateLimit: cfg.RateLimit,
 	}
+
+	var err error
+	res.PubKey, err = utils.ParseRSAPublicKey(cfg.Crypto)
+	if err != nil {
+		panic(fmt.Errorf("failed to parse public key from config: %w", err))
+	}
+	return res
 }

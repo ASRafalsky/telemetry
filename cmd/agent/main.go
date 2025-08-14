@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -27,17 +28,18 @@ func main() {
 
 	cfg, err := updateCfg()
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("failed to update config: %w", err))
 	}
 
 	logger, err := log.AddLoggerWith("info", "")
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("failed to add logger: %w", err))
 	}
 	defer logger.Sync()
 
 	client := newClient()
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, cancel := signal.NotifyContext(
+		context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
 	defer cancel()
 
 	repo := cache.New[string, []byte]()
