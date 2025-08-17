@@ -46,7 +46,7 @@ func updateCfg() (config.Server, error) {
 		return cfg, multierr.Append(err, errReadCfg)
 	}
 
-	cfg.PrivateKey, err = utils.ParseRSAPrivateKey(cfg.Crypto)
+	cfg.PrivateKey, err = utils.ParsePrivateKey(cfg.Crypto)
 
 	return cfg, multierr.Append(err, errReadCfg)
 }

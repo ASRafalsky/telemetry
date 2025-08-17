@@ -4,7 +4,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"time"
 
 	"github.com/caarlos0/env/v10"
 
@@ -52,14 +51,14 @@ func newPollerCfg(cfg config.Agent) poller.Config {
 
 func newSenderCfg(cfg config.Agent) reporter.Config {
 	res := reporter.Config{
-		Interval:  cfg.ReportPeriod * time.Second,
+		Interval:  cfg.ReportPeriod,
 		Address:   "http://" + cfg.Addr,
 		Key:       cfg.Key,
 		RateLimit: cfg.RateLimit,
 	}
 
 	var err error
-	res.PubKey, err = utils.ParseRSAPublicKey(cfg.Crypto)
+	res.PubKey, err = utils.ParsePublicKey(cfg.Crypto)
 	if err != nil {
 		panic(fmt.Errorf("failed to parse public key from config: %w", err))
 	}

@@ -32,7 +32,7 @@ func TestAgent(t *testing.T) {
 		psCPUCnt, gSendCnt, cSendCnt                       atomic.Int64
 	)
 
-	privKey, err := utils.ParseRSAPrivateKey("./testdata/private.key")
+	privKey, err := utils.ParsePrivateKey("./testdata/private.key")
 	require.NoError(t, err)
 
 	// Add handlers and router.
@@ -143,10 +143,12 @@ func TestAgent(t *testing.T) {
 	pollCfg := poller.Config{
 		Interval: time.Duration(10) * time.Millisecond,
 	}
-	go poller.Poll(ctx, poller.GetGaugeMetrics, pollCfg, gaugeRepo, logeer)
-	go poller.Poll(ctx, poller.GetPSMemMetrics, pollCfg, gaugeRepo, logeer)
-	go poller.Poll(ctx, poller.GetPSCPUMetrics, pollCfg, gaugeRepo, logeer)
-	go poller.Poll(ctx, poller.GetCounterMetrics, pollCfg, counterRepo, logeer)
+
+	pollerModule := poller.New(pollCfg)
+	pollerModule.Run(ctx, poller.GetGaugeMetrics, gaugeRepo, logeer)
+	pollerModule.Run(ctx, poller.GetPSMemMetrics, gaugeRepo, logeer)
+	pollerModule.Run(ctx, poller.GetPSCPUMetrics, gaugeRepo, logeer)
+	pollerModule.Run(ctx, poller.GetCounterMetrics, counterRepo, logeer)
 
 	senderCfg1 := newSenderCfg(config.Agent{
 		CommonFields: config.CommonFields{

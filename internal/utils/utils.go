@@ -27,7 +27,7 @@ func SignCheck(t *testing.T, buf, key []byte, sign string) {
 	}
 }
 
-func ParseRSAPublicKey(path string) (*rsa.PublicKey, error) {
+func ParsePublicKey(path string) (*rsa.PublicKey, error) {
 	if len(path) == 0 {
 		return nil, nil
 	}
@@ -47,7 +47,7 @@ func ParseRSAPublicKey(path string) (*rsa.PublicKey, error) {
 	return pubKey, nil
 }
 
-func ParseRSAPrivateKey(path string) (*rsa.PrivateKey, error) {
+func ParsePrivateKey(path string) (*rsa.PrivateKey, error) {
 	if len(path) == 0 {
 		return nil, nil
 	}

@@ -494,7 +494,7 @@ func Test_JSON_encoding_signed(t *testing.T) {
 			Crypto: "./testdata/private.key",
 		},
 	}
-	cfg.PrivateKey, err = utils.ParseRSAPrivateKey(cfg.Crypto)
+	cfg.PrivateKey, err = utils.ParsePrivateKey(cfg.Crypto)
 	require.NoError(t, err)
 	require.NotNil(t, cfg.PrivateKey)
 	require.NoError(t, cfg.PrivateKey.Validate())
@@ -696,7 +696,7 @@ func Test_JSON_encoding_signed(t *testing.T) {
 			expStatusCode: http.StatusBadRequest,
 		},
 	}
-	pubKey, err := utils.ParseRSAPublicKey("./testdata/public.key")
+	pubKey, err := utils.ParsePublicKey("./testdata/public.key")
 	require.NoError(t, err)
 
 	for _, tc := range ttJSONUpdate {

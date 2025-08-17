@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/ASRafalsky/telemetry/internal/poller"
@@ -46,14 +47,24 @@ func main() {
 
 	logger.Info("Agent started with address:", "http://"+cfg.Addr)
 
-	pollerCfg := newPollerCfg(cfg)
-	go poller.Poll(ctx, poller.GetGaugeMetrics, pollerCfg, repo, logger)
-	go poller.Poll(ctx, poller.GetCounterMetrics, pollerCfg, repo, logger)
-	go poller.Poll(ctx, poller.GetPSMemMetrics, pollerCfg, repo, logger)
-	go poller.Poll(ctx, poller.GetPSCPUMetrics, pollerCfg, repo, logger)
+	pollerModule := poller.New(newPollerCfg(cfg))
+	pollerModule.Run(ctx, poller.GetGaugeMetrics, repo, logger)
+	pollerModule.Run(ctx, poller.GetCounterMetrics, repo, logger)
+	pollerModule.Run(ctx, poller.GetPSMemMetrics, repo, logger)
+	pollerModule.Run(ctx, poller.GetPSCPUMetrics, repo, logger)
 
-	go reporter.Send(ctx, "", newSenderCfg(cfg), client, repo, logger)
+	sendCtx, cancelSend := context.WithCancel(context.Background())
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		reporter.Send(sendCtx, "", newSenderCfg(cfg), client, repo, logger)
+	}()
+	pollerModule.WaitShutdown(logger)
+	// Stop reporter.
+	cancelSend()
+	// Wait until reporter is stopped.
+	wg.Wait()
 
-	<-ctx.Done()
 	logger.Info("Agent stopped")
 }
