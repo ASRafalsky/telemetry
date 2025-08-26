@@ -8,9 +8,12 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 
+	"github.com/gojek/heimdall/v7/httpclient"
 	"github.com/stretchr/testify/require"
 )
 
@@ -75,4 +78,23 @@ func PrintBuildInfo(version, date, commit string) {
 	fmt.Printf("Build version: %s\n", version)
 	fmt.Printf("Build date: %s\n", date)
 	fmt.Printf("Build commit: %s\n", commit)
+}
+
+// GetClientAddr returns local addr if it is possible.
+func GetClientAddr(client *httpclient.Client) (string, error) {
+	var clientAddr string
+	// Create test server. Yes, I know. Change my mind.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		clientAddr = r.RemoteAddr
+		_ = r.Body.Close()
+	}))
+	defer srv.Close()
+	r, err := client.Get(srv.URL, http.Header{})
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		_ = r.Body.Close()
+	}()
+	return clientAddr, nil
 }

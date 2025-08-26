@@ -25,6 +25,7 @@ import (
 
 	"github.com/ASRafalsky/telemetry/internal/transport"
 	"github.com/ASRafalsky/telemetry/internal/types"
+	"github.com/ASRafalsky/telemetry/internal/utils"
 )
 
 const (
@@ -39,12 +40,20 @@ type Config struct {
 	RateLimit int            // RateLimit - rate limit for send data.
 	Interval  time.Duration  // Interval - period send data.
 	PubKey    *rsa.PublicKey // PubKey - public key for encryption.
+	clientIP  string         // clientIP Local IP address of the client host.
 }
 
 // Send sends data from repo with mType through client to the dst from cfg.
 func Send(ctx context.Context, mType string, cfg Config, client *httpclient.Client, repo repository, log logger) {
 	log.Info("Reporeter started with interval:", cfg.Interval.String())
 	log.Info("Reporeter started with rate limit:", strconv.Itoa(cfg.RateLimit))
+
+	cfg.setSrcIP(client, log)
+	if len(cfg.clientIP) != 0 {
+		log.Info("Reporeter addr:", cfg.Interval.String())
+	} else {
+		log.Warn("Reporeter addr undefined")
+	}
 
 	sendTimer := time.NewTicker(cfg.Interval)
 	defer sendTimer.Stop()
@@ -88,6 +97,7 @@ func processAndSend(ctx context.Context, mType string, cfg Config, client *httpc
 	}
 	header := http.Header{
 		"Content-Type": []string{"application/json"},
+		"X-Real-Ip":    []string{cfg.clientIP}, // I find this strange.
 	}
 	header.Set("Content-Encoding", "gzip")
 
@@ -291,6 +301,15 @@ func withRetryOnErr(ctx context.Context, cnt int, fn func() error) error {
 		}
 	}
 	return err
+}
+
+func (c *Config) setSrcIP(client *httpclient.Client, log logger) {
+	addr, err := utils.GetClientAddr(client)
+	if err != nil {
+		log.Error("Failed to get client IP address:", err.Error())
+		return
+	}
+	c.clientIP = addr
 }
 
 type logger interface {
