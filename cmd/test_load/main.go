@@ -127,7 +127,7 @@ func main() {
 
 func newSenderCfg(cfg config.Agent) reporter.Config {
 	return reporter.Config{
-		Interval:  time.Duration(cfg.ReportPeriod) * time.Millisecond,
+		Interval:  cfg.ReportPeriod * time.Millisecond,
 		Address:   "http://" + cfg.Addr,
 		Key:       cfg.Key,
 		RateLimit: cfg.RateLimit,

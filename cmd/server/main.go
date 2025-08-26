@@ -61,10 +61,10 @@ func main() {
 		diagCfg := newDiagnosticCfg(cfg)
 		runServer(ctx, cancel, diagnosticRouter(ctx, diagCfg.Diag), diagCfg, Log)
 	}()
-	runServer(ctx, cancel, middleware.WithLogging(
-		middleware.WithSign(
-			middleware.Decrypt(
-				newRouter(repo, cfg, Log), cfg.PrivateKey), []byte(cfg.Key), Log), Log), cfg, Log)
+	const srcIPInHeader = true
+	runServer(ctx, cancel, middleware.WithLogging(middleware.CheckCIDR(middleware.WithSign(
+		middleware.Decrypt(
+			newRouter(repo, cfg, Log), cfg.PrivateKey), []byte(cfg.Key), Log), srcIPInHeader, cfg.CIDR), Log), cfg, Log)
 
 	Log.Info("Telemetry Server stopped.")
 }
