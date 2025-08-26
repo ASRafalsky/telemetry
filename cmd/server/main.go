@@ -31,19 +31,19 @@ func main() {
 
 	cfg, err := updateCfg()
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("failed to update config: %w", err))
 	}
 
 	Log, err := log.AddLoggerWith(cfg.LogLevel, cfg.LogPath)
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("failed to add logger: %w", err))
 	}
 	defer Log.Sync()
 
 	Log.Info("Starting telemetry server", cfg.Addr, cfg.LogLevel, cfg.DumpPath)
 	repo := repository.NewExtendedRepository(cache.New[string, []byte]())
 
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
 	defer cancel()
 
 	if db, err := initDB(ctx, cfg.DB, *Log); err == nil {
@@ -59,11 +59,12 @@ func main() {
 
 	go func() {
 		diagCfg := newDiagnosticCfg(cfg)
-		fmt.Println(diagCfg)
 		runServer(ctx, cancel, diagnosticRouter(ctx, diagCfg.Diag), diagCfg, Log)
 	}()
-	fmt.Println(cfg)
-	runServer(ctx, cancel, middleware.WithLogging(newRouter(repo, cfg, Log), Log), cfg, Log)
+	runServer(ctx, cancel, middleware.WithLogging(
+		middleware.WithSign(
+			middleware.Decrypt(
+				newRouter(repo, cfg, Log), cfg.PrivateKey), []byte(cfg.Key), Log), Log), cfg, Log)
 
 	Log.Info("Telemetry Server stopped.")
 }
@@ -107,35 +108,26 @@ func newRouter(repo dataRepository, cfg config.Server, logger *log.Logger) http.
 	r.Route("/", func(r chi.Router) {
 		r.Route("/update", func(r chi.Router) {
 			r.Post("/",
-				middleware.WithSign(middleware.WithCompress(handlers.JSONPostHandler(repo, handlers.SetDataTo), logger),
-					[]byte(cfg.Key), logger))
-			r.Post("/gauge/{name}/{value}",
-				middleware.WithSign(handlers.GaugePostHandler(repo), []byte(cfg.Key), logger))
-			r.Post("/counter/{name}/{value}",
-				middleware.WithSign(handlers.CounterPostHandler(repo), []byte(cfg.Key), logger))
-			r.Post("/{type}/{name}/{value}",
-				middleware.WithSign(handlers.FailurePostHandler(), []byte(cfg.Key), logger))
+				middleware.WithCompress(handlers.JSONPostHandler(repo, handlers.SetDataTo), logger))
+			r.Post("/gauge/{name}/{value}", handlers.GaugePostHandler(repo))
+			r.Post("/counter/{name}/{value}", handlers.CounterPostHandler(repo))
+			r.Post("/{type}/{name}/{value}", handlers.FailurePostHandler())
 		})
 		r.Route("/value", func(r chi.Router) {
-			r.Post("/",
-				middleware.WithSign(middleware.WithCompress(handlers.JSONPostHandler(repo, handlers.GetDataFrom), logger),
-					[]byte(cfg.Key), logger))
-			r.Get("/gauge/{name}", middleware.WithSign(handlers.GaugeGetHandler(repo), []byte(cfg.Key), logger))
-			r.Get("/counter/{name}", middleware.WithSign(handlers.CounterGetHandler(repo), []byte(cfg.Key), logger))
-			r.Get("/{type}/{name}", middleware.WithSign(handlers.FailureGetHandler(), []byte(cfg.Key), logger))
+			r.Post("/", middleware.WithCompress(handlers.JSONPostHandler(repo, handlers.GetDataFrom), logger))
+			r.Get("/gauge/{name}", handlers.GaugeGetHandler(repo))
+			r.Get("/counter/{name}", handlers.CounterGetHandler(repo))
+			r.Get("/{type}/{name}", handlers.FailureGetHandler())
 		})
 		r.Route("/ping", func(r chi.Router) {
-			r.Get("/", middleware.WithSign(handlers.DBPingHandler(repo), []byte(cfg.Key), logger))
+			r.Get("/", handlers.DBPingHandler(repo))
 		})
 		r.Route("/updates", func(r chi.Router) {
-			r.Post("/",
-				middleware.WithSign(middleware.WithCompress(handlers.JSONPostHandler(repo, handlers.SetDataTo), logger),
-					[]byte(cfg.Key), logger))
+			r.Post("/", middleware.WithCompress(handlers.JSONPostHandler(repo, handlers.SetDataTo), logger))
 		})
-		r.Post("/", middleware.WithSign(handlers.FailurePostHandler(), []byte(cfg.Key), logger))
+		r.Post("/", handlers.FailurePostHandler())
 		r.Get("/",
-			middleware.WithSign(middleware.WithCompress(handlers.AllGetHandler(templates.PrepareTemplate(), repo), logger),
-				[]byte(cfg.Key), logger))
+			middleware.WithCompress(handlers.AllGetHandler(templates.PrepareTemplate(), repo), logger))
 	})
 	return r
 }

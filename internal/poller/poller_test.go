@@ -74,10 +74,11 @@ func TestPoll(t *testing.T) {
 		Interval: time.Duration(100) * time.Millisecond,
 	}
 
-	go Poll(ctx, GetGaugeMetrics, cfg, repo, log)
-	go Poll(ctx, GetCounterMetrics, cfg, repo, log)
-	go Poll(ctx, GetPSMemMetrics, cfg, repo, log)
-	go Poll(ctx, GetPSCPUMetrics, cfg, repo, log)
+	pollerModule := New(cfg)
+	go pollerModule.poll(ctx, GetGaugeMetrics, repo, log)
+	go pollerModule.poll(ctx, GetCounterMetrics, repo, log)
+	go pollerModule.poll(ctx, GetPSMemMetrics, repo, log)
+	go pollerModule.poll(ctx, GetPSCPUMetrics, repo, log)
 
 	// Wait 90 ms, it is too early to have any data.
 	time.Sleep(90 * time.Millisecond)

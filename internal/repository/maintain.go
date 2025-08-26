@@ -23,7 +23,7 @@ func (r *ExtendedRepository) Maintain(ctx context.Context, cfg config.Server, l 
 		go func() {
 			r.syncer(ctx, l)
 		}()
-	case cfg.DumpPath != config.DefaultDumpPath && cfg.StorePeriod != config.DefaultDumpInterval:
+	case cfg.DumpPath != config.DefaultDumpPath && cfg.StorePeriodStr != config.DefaultDumpInterval:
 		l.Info("Repository syncs with file", cfg.DumpPath)
 		go backup.BackupRepo(ctx, r, cfg.StorePeriod, cfg.DumpPath, l)
 	default:

@@ -6,6 +6,7 @@ import (
 	"math/rand/v2"
 	"runtime"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/shirou/gopsutil/v4/cpu"
@@ -24,23 +25,33 @@ type Config struct {
 	Interval time.Duration
 }
 
-// Poll polls everything what you need. You really need it, believe me!
-func Poll(ctx context.Context,
-	fn func(ctx context.Context, r repository) error, cfg Config, repo repository, log logger) {
-	log.Info("Polling started with interval:", cfg.Interval.String())
-	pollTimer := time.NewTicker(cfg.Interval)
-	defer pollTimer.Stop()
+// Poller controlls state of poller.
+type Poller struct {
+	wg  sync.WaitGroup
+	cfg Config
+}
 
-	for ctx.Err() == nil {
-		select {
-		case <-ctx.Done():
-			return
-		case <-pollTimer.C:
-			if err := fn(ctx, repo); err != nil {
-				log.Error("Polling failed with err.", err.Error())
-			}
-		}
+// New creates new poller.
+func New(cfg Config) *Poller {
+	return &Poller{
+		cfg: cfg,
 	}
+}
+
+// Run runs polling.
+func (p *Poller) Run(ctx context.Context,
+	fn func(ctx context.Context, r repository) error, repo repository, log logger) {
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
+		p.poll(ctx, fn, repo, log)
+	}()
+}
+
+// WaitShutdown waits until each polling module has stopped.
+func (p *Poller) WaitShutdown(log logger) {
+	p.wg.Wait()
+	log.Info("Pollers shutdown complete")
 }
 
 // GetCounterMetrics collects counter metrics and saves them to the repo.
@@ -114,6 +125,25 @@ func GetPSCPUMetrics(ctx context.Context, repo repository) error {
 		repo.Set(gauge+"CPUutilization"+strconv.Itoa(n+1), types.GaugeToBytes(types.Gauge(cpu[n])))
 	}
 	return nil
+}
+
+// poll polls everything what you need. You really need it, believe me!
+func (p *Poller) poll(ctx context.Context,
+	fn func(ctx context.Context, r repository) error, repo repository, log logger) {
+	log.Info("Polling started with interval:", p.cfg.Interval.String())
+	pollTimer := time.NewTicker(p.cfg.Interval)
+	defer pollTimer.Stop()
+
+	for ctx.Err() == nil {
+		select {
+		case <-ctx.Done():
+			return
+		case <-pollTimer.C:
+			if err := fn(ctx, repo); err != nil {
+				log.Error("Polling failed with err.", err.Error())
+			}
+		}
+	}
 }
 
 type logger interface {

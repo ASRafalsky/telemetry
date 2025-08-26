@@ -6,6 +6,8 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -32,10 +34,11 @@ const (
 
 // Config for send data.
 type Config struct {
-	Key       string        // Key - key for sign data.
-	Address   string        // Address - dst address of data.
-	RateLimit int           // RateLimit - rate limit for send data.
-	Interval  time.Duration // Interval - period send data.
+	Key       string         // Key - key for sign data.
+	Address   string         // Address - dst address of data.
+	RateLimit int            // RateLimit - rate limit for send data.
+	Interval  time.Duration  // Interval - period send data.
+	PubKey    *rsa.PublicKey // PubKey - public key for encryption.
 }
 
 // Send sends data from repo with mType through client to the dst from cfg.
@@ -55,44 +58,61 @@ func Send(ctx context.Context, mType string, cfg Config, client *httpclient.Clie
 	for {
 		select {
 		case <-ctx.Done():
+			log.Info("Reporeter shutting down")
+			gracefulShutdownContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			processAndSend(gracefulShutdownContext, mType, cfg, client, repo, log)
+			cancel()
+			log.Info("Reporeter shutdown complete due to", gracefulShutdownContext.Err().Error())
 			return
 		case <-sendTimer.C:
 			if !rl.Allow() {
 				continue
 			}
-			sendCtx, cancel := context.WithTimeout(ctx, cfg.Interval*90/100) // I'm so sorry)).
-
-			var bufToSend = bytes.NewBuffer(nil)
-
-			zw := gzip.NewWriter(bufToSend)
-			err := serializeMetrics(ctx, "", repo, zw)
-			if errZw := zw.Close(); errZw != nil || err != nil {
-				err = multierr.Append(err, fmt.Errorf("failed to close gzip writer: %w", errZw))
-				log.Error("[send/json] failed to serialize metrics for", mType, err.Error())
-				cancel()
-				continue
-			}
-			header := http.Header{
-				"Content-Type": []string{"application/json"},
-			}
-			header.Set("Content-Encoding", "gzip")
-
-			if signature, err := sign(bufToSend.Bytes(), []byte(cfg.Key)); err != nil {
-				log.Error("[send/json] failed to sign data for", mType, err.Error())
-				cancel()
-				continue
-			} else {
-				header.Set("HashSHA256", signature)
-			}
-
-			if err := withRetryOnErr(sendCtx, 3, func() error {
-				return sendDataTo("/updates/", cfg, header, bufToSend, client)
-			}); err != nil {
-				log.Error("[send/json] failed to send data] for", mType, err.Error())
-			}
-			cancel()
+			processAndSend(ctx, mType, cfg, client, repo, log)
 		}
 	}
+}
+
+func processAndSend(ctx context.Context, mType string, cfg Config, client *httpclient.Client, repo repository, log logger) {
+	sendCtx, cancel := context.WithTimeout(ctx, cfg.Interval*90/100) // I'm so sorry)).
+
+	var bufToSend = bytes.NewBuffer(nil)
+
+	zw := gzip.NewWriter(bufToSend)
+	err := serializeMetrics(ctx, "", repo, zw)
+	if errZw := zw.Close(); errZw != nil || err != nil {
+		err = multierr.Append(err, fmt.Errorf("failed to close gzip writer: %w", errZw))
+		log.Error("[send/json] failed to serialize metrics for", mType, err.Error())
+		cancel()
+		return
+	}
+	header := http.Header{
+		"Content-Type": []string{"application/json"},
+	}
+	header.Set("Content-Encoding", "gzip")
+
+	bytesToSend, errEnc := encrypt(cfg.PubKey, bufToSend.Bytes())
+	if errEnc != nil {
+		err = multierr.Append(err, fmt.Errorf("failed to encrypt data: %w", errEnc))
+		log.Error("[send/json] failed to encrypt data for", mType, err.Error())
+		cancel()
+		return
+	}
+
+	if signature, err := sign(bytesToSend, []byte(cfg.Key)); err != nil {
+		log.Error("[send/json] failed to sign data for", mType, err.Error())
+		cancel()
+		return
+	} else {
+		header.Set("HashSHA256", signature)
+	}
+
+	if err := withRetryOnErr(sendCtx, 3, func() error {
+		return sendDataTo("/updates/", cfg, header, bytes.NewReader(bytesToSend), client)
+	}); err != nil {
+		log.Error("[send/json] failed to send data] for", mType, err.Error())
+	}
+	cancel()
 }
 
 func sendDataTo(dst string, cfg Config, header http.Header, r io.Reader, client *httpclient.Client) (err error) {
@@ -110,6 +130,17 @@ func sendDataTo(dst string, cfg Config, header http.Header, r io.Reader, client 
 		err = multierr.Append(err, fmt.Errorf("bad status: %s", resp.Status))
 	}
 	return err
+}
+
+func encrypt(key *rsa.PublicKey, data []byte) ([]byte, error) {
+	if key == nil {
+		return data, nil
+	}
+	cipherdata, err := rsa.EncryptPKCS1v15(rand.Reader, key, data)
+	if err != nil {
+		return nil, err
+	}
+	return cipherdata, nil
 }
 
 func sign(data []byte, key []byte) (string, error) {

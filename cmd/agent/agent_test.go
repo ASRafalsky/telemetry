@@ -32,6 +32,9 @@ func TestAgent(t *testing.T) {
 		psCPUCnt, gSendCnt, cSendCnt                       atomic.Int64
 	)
 
+	privKey, err := utils.ParsePrivateKey("./testdata/private.key")
+	require.NoError(t, err)
+
 	// Add handlers and router.
 	gaugeHandler := func() http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
@@ -59,8 +62,13 @@ func TestAgent(t *testing.T) {
 			)
 			body, err := io.ReadAll(r.Body)
 			require.NoError(t, err)
-			r.Body = io.NopCloser(bytes.NewBuffer(body))
+
 			utils.SignCheck(t, body, []byte(key), r.Header.Get("HashSHA256"))
+
+			data, err := privKey.Decrypt(nil, body, nil)
+			require.NoError(t, err)
+
+			r.Body = io.NopCloser(bytes.NewBuffer(data))
 			defer require.NoError(t, r.Body.Close())
 
 			switch r.Header.Get("Content-Encoding") {
@@ -135,14 +143,17 @@ func TestAgent(t *testing.T) {
 	pollCfg := poller.Config{
 		Interval: time.Duration(10) * time.Millisecond,
 	}
-	go poller.Poll(ctx, poller.GetGaugeMetrics, pollCfg, gaugeRepo, logeer)
-	go poller.Poll(ctx, poller.GetPSMemMetrics, pollCfg, gaugeRepo, logeer)
-	go poller.Poll(ctx, poller.GetPSCPUMetrics, pollCfg, gaugeRepo, logeer)
-	go poller.Poll(ctx, poller.GetCounterMetrics, pollCfg, counterRepo, logeer)
+
+	pollerModule := poller.New(pollCfg)
+	pollerModule.Run(ctx, poller.GetGaugeMetrics, gaugeRepo, logeer)
+	pollerModule.Run(ctx, poller.GetPSMemMetrics, gaugeRepo, logeer)
+	pollerModule.Run(ctx, poller.GetPSCPUMetrics, gaugeRepo, logeer)
+	pollerModule.Run(ctx, poller.GetCounterMetrics, counterRepo, logeer)
 
 	senderCfg1 := newSenderCfg(config.Agent{
 		CommonFields: config.CommonFields{
-			Key: key,
+			Key:    key,
+			Crypto: "./testdata/public.key",
 		},
 		RateLimit: 1,
 	})
@@ -150,8 +161,9 @@ func TestAgent(t *testing.T) {
 	senderCfg1.Address = srv.URL
 	senderCfg2 := newSenderCfg(config.Agent{
 		CommonFields: config.CommonFields{
-			Addr: srv.URL,
-			Key:  key,
+			Addr:   srv.URL,
+			Key:    key,
+			Crypto: "./testdata/public.key",
 		},
 		RateLimit: 4,
 	})
