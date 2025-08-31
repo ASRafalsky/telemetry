@@ -37,6 +37,7 @@ func updateCfg() (config.Server, error) {
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "key for sign")
 	flag.StringVar(&cfg.Crypto, "crypto-key", cfg.Crypto, "private key path")
 	flag.StringVar(&cfg.Subnet, "t", cfg.Crypto, "trusted subnet")
+	flag.BoolVar(&cfg.GRPC, "g", cfg.GRPC, "use grpc")
 	flag.Parse()
 
 	err := env.Parse(&cfg)

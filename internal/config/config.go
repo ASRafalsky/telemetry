@@ -36,6 +36,7 @@ type CommonFields struct {
 	LogPath  string `env:"LOG_PATH" json:"log_path"`
 	Key      string `env:"KEY" json:"key"`
 	Crypto   string `env:"CRYPTO_KEY" json:"crypto_key"`
+	GRPC     bool   `env:"GRPC" json:"grpc"`
 }
 
 type DB struct {

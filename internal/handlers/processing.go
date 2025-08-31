@@ -24,7 +24,7 @@ func SetDataTo(ctx context.Context, repo repository, m transport.Metrics) ([]byt
 	case types.GaugeType:
 		switch {
 		case m.Value != nil:
-			dataBuf, err := gaugePostDataHandler(repo, m)
+			dataBuf, err := gaugeDataHandler(repo, m)
 			if err != nil {
 				return nil, http.StatusInternalServerError, err
 			}
@@ -32,12 +32,12 @@ func SetDataTo(ctx context.Context, repo repository, m transport.Metrics) ([]byt
 		case m.Delta != nil:
 			return nil, http.StatusBadRequest, errors.New("delta not supported for gauge")
 		default:
-			return nil, http.StatusBadRequest, errors.New("gaugePostDataHandler called with no data")
+			return nil, http.StatusBadRequest, errors.New("gaugeDataHandler called with no data")
 		}
 	case types.CounterType:
 		switch {
 		case m.Delta != nil:
-			dataBuf, err := counterPostDataHandler(ctx, repo, m)
+			dataBuf, err := counterDataHandler(ctx, repo, m)
 			if err != nil {
 				return nil, http.StatusInternalServerError, err
 			}
@@ -45,7 +45,7 @@ func SetDataTo(ctx context.Context, repo repository, m transport.Metrics) ([]byt
 		case m.Value != nil:
 			return nil, http.StatusBadRequest, errors.New("value not supported for gauge")
 		default:
-			return nil, http.StatusBadRequest, errors.New("gaugePostDataHandler called with no data")
+			return nil, http.StatusBadRequest, errors.New("gaugeDataHandler called with no data")
 		}
 	default:
 		return nil, http.StatusBadRequest, fmt.Errorf("type %s not supported", m.MType)
@@ -73,7 +73,7 @@ func GetDataFrom(ctx context.Context, repo repository, m transport.Metrics) ([]b
 	}
 }
 
-func counterPostDataHandler(ctx context.Context, repo repository, value transport.Metrics) ([]byte, error) {
+func counterDataHandler(ctx context.Context, repo repository, value transport.Metrics) ([]byte, error) {
 	name := types.CounterType + value.ID
 	buf, err := repo.Get(ctx, name)
 	if err != nil {
@@ -117,7 +117,7 @@ func counterGetDataHandler(ctx context.Context, repo repository, key string) ([]
 	return buf, nil
 }
 
-func gaugePostDataHandler(repo repository, value transport.Metrics) ([]byte, error) {
+func gaugeDataHandler(repo repository, value transport.Metrics) ([]byte, error) {
 	buf, err := easyjson.Marshal(&value)
 	if err != nil {
 		return nil, err

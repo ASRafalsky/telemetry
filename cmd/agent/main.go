@@ -38,7 +38,7 @@ func main() {
 	}
 	defer logger.Sync()
 
-	client := newClient()
+	client, laddr := newClient(cfg, logger)
 	ctx, cancel := signal.NotifyContext(
 		context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
 	defer cancel()
@@ -54,11 +54,12 @@ func main() {
 	pollerModule.Run(ctx, poller.GetPSCPUMetrics, repo, logger)
 
 	sendCtx, cancelSend := context.WithCancel(context.Background())
+
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		reporter.Send(sendCtx, "", newSenderCfg(cfg), client, repo, logger)
+		reporter.Send(sendCtx, "", newSenderCfg(cfg, laddr), client, repo, logger)
 	}()
 	pollerModule.WaitShutdown(logger)
 	// Stop reporter.

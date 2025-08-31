@@ -5,11 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"crypto/hmac"
-	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -20,12 +16,16 @@ import (
 	"time"
 
 	"github.com/gojek/heimdall/v7/httpclient"
+	"github.com/mailru/easyjson"
 	"go.uber.org/multierr"
 	"golang.org/x/time/rate"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/ASRafalsky/telemetry/internal/transport"
 	"github.com/ASRafalsky/telemetry/internal/types"
 	"github.com/ASRafalsky/telemetry/internal/utils"
+	pb "github.com/ASRafalsky/telemetry/proto"
 )
 
 const (
@@ -40,17 +40,16 @@ type Config struct {
 	RateLimit int            // RateLimit - rate limit for send data.
 	Interval  time.Duration  // Interval - period send data.
 	PubKey    *rsa.PublicKey // PubKey - public key for encryption.
-	clientIP  string         // clientIP Local IP address of the client host.
+	ClientIP  string         // ClientIP Local IP address of the client host.
+	GRPC      bool
 }
 
 // Send sends data from repo with mType through client to the dst from cfg.
-func Send(ctx context.Context, mType string, cfg Config, client *httpclient.Client, repo repository, log logger) {
+func Send(ctx context.Context, mType string, cfg Config, client interface{}, repo repository, log logger) {
 	log.Info("Reporeter started with interval:", cfg.Interval.String())
 	log.Info("Reporeter started with rate limit:", strconv.Itoa(cfg.RateLimit))
-
-	cfg.setSrcIP(client, log)
-	if len(cfg.clientIP) != 0 {
-		log.Info("Reporeter addr:", cfg.Interval.String())
+	if len(cfg.ClientIP) != 0 {
+		log.Info("Reporeter addr:", cfg.ClientIP)
 	} else {
 		log.Warn("Reporeter addr undefined")
 	}
@@ -69,7 +68,11 @@ func Send(ctx context.Context, mType string, cfg Config, client *httpclient.Clie
 		case <-ctx.Done():
 			log.Info("Reporeter shutting down")
 			gracefulShutdownContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			processAndSend(gracefulShutdownContext, mType, cfg, client, repo, log)
+			if cfg.GRPC {
+				processAndSendGRPC(gracefulShutdownContext, mType, cfg, client.(pb.MetricsClient), repo, log)
+			} else {
+				processAndSend(gracefulShutdownContext, mType, cfg, client.(*httpclient.Client), repo, log)
+			}
 			cancel()
 			log.Info("Reporeter shutdown complete due to", gracefulShutdownContext.Err().Error())
 			return
@@ -77,7 +80,11 @@ func Send(ctx context.Context, mType string, cfg Config, client *httpclient.Clie
 			if !rl.Allow() {
 				continue
 			}
-			processAndSend(ctx, mType, cfg, client, repo, log)
+			if cfg.GRPC {
+				processAndSendGRPC(ctx, mType, cfg, client.(pb.MetricsClient), repo, log)
+			} else {
+				processAndSend(ctx, mType, cfg, client.(*httpclient.Client), repo, log)
+			}
 		}
 	}
 }
@@ -97,11 +104,11 @@ func processAndSend(ctx context.Context, mType string, cfg Config, client *httpc
 	}
 	header := http.Header{
 		"Content-Type": []string{"application/json"},
-		"X-Real-Ip":    []string{cfg.clientIP}, // I find this strange.
+		"X-Real-Ip":    []string{cfg.ClientIP}, // I find this strange.
 	}
 	header.Set("Content-Encoding", "gzip")
 
-	bytesToSend, errEnc := encrypt(cfg.PubKey, bufToSend.Bytes())
+	bytesToSend, errEnc := utils.Encrypt(cfg.PubKey, bufToSend.Bytes())
 	if errEnc != nil {
 		err = multierr.Append(err, fmt.Errorf("failed to encrypt data: %w", errEnc))
 		log.Error("[send/json] failed to encrypt data for", mType, err.Error())
@@ -109,7 +116,7 @@ func processAndSend(ctx context.Context, mType string, cfg Config, client *httpc
 		return
 	}
 
-	if signature, err := sign(bytesToSend, []byte(cfg.Key)); err != nil {
+	if signature, err := utils.Sign(bytesToSend, []byte(cfg.Key)); err != nil {
 		log.Error("[send/json] failed to sign data for", mType, err.Error())
 		cancel()
 		return
@@ -121,6 +128,52 @@ func processAndSend(ctx context.Context, mType string, cfg Config, client *httpc
 		return sendDataTo("/updates/", cfg, header, bytes.NewReader(bytesToSend), client)
 	}); err != nil {
 		log.Error("[send/json] failed to send data] for", mType, err.Error())
+	}
+	cancel()
+}
+
+func processAndSendGRPC(ctx context.Context, mType string, cfg Config, client pb.MetricsClient, repo repository, log logger) {
+	sendCtx, cancel := context.WithTimeout(ctx, cfg.Interval*90/100) // I'm so sorry)).
+
+	metricsMap, err := metricsToMap(ctx, mType, repo)
+	if err != nil {
+		log.Error("[send/grpc] failed to serialize metrics for", mType, err.Error())
+		cancel()
+		return
+	}
+
+	data := pb.MetricsList{
+		Values: metricsMap,
+	}
+	buf, err := proto.Marshal(&data)
+	if err != nil {
+		log.Error("[send/grpc] failed to serialize metrics for", mType, err.Error())
+	}
+
+	md := metadata.New(map[string]string{})
+	md.Set("X-Real-Ip", cfg.ClientIP)
+
+	bytesToSend, errEnc := utils.Encrypt(cfg.PubKey, buf)
+	if errEnc != nil {
+		err = multierr.Append(err, fmt.Errorf("failed to encrypt data: %w", errEnc))
+		log.Error("[send/grpc] failed to encrypt data for", mType, err.Error())
+		cancel()
+		return
+	}
+	if signature, err := utils.Sign(bytesToSend, []byte(cfg.Key)); err != nil {
+		log.Error("[send/grpc] failed to sign data for", mType, err.Error())
+		cancel()
+		return
+	} else {
+		md.Set("HashSHA256", signature)
+	}
+	sendCtx = metadata.NewOutgoingContext(sendCtx, md)
+
+	if err := withRetryOnErr(sendCtx, 3, func() error {
+		_, err := client.Set(sendCtx, &pb.SetMetricsRequest{Values: bytesToSend})
+		return err
+	}); err != nil {
+		log.Error("[send/grpc] failed to send data] for", mType, err.Error())
 	}
 	cancel()
 }
@@ -140,28 +193,6 @@ func sendDataTo(dst string, cfg Config, header http.Header, r io.Reader, client 
 		err = multierr.Append(err, fmt.Errorf("bad status: %s", resp.Status))
 	}
 	return err
-}
-
-func encrypt(key *rsa.PublicKey, data []byte) ([]byte, error) {
-	if key == nil {
-		return data, nil
-	}
-	cipherdata, err := rsa.EncryptPKCS1v15(rand.Reader, key, data)
-	if err != nil {
-		return nil, err
-	}
-	return cipherdata, nil
-}
-
-func sign(data []byte, key []byte) (string, error) {
-	if len(key) == 0 {
-		return "", nil
-	}
-	h := hmac.New(sha256.New, key)
-	if _, err := h.Write(data); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func sendCounterData(ctx context.Context, addr string, repo repository, client *httpclient.Client) error {
@@ -215,28 +246,45 @@ func sendGaugeData(ctx context.Context, addr string, repo repository, client *ht
 	})
 }
 
-func serializeMetrics(ctx context.Context, mtype string, repo repository, wc writerCloser) error {
+func metricsToMap(ctx context.Context, mtype string, repo repository) (map[string][]byte, error) {
+	res := make(map[string][]byte, repo.Size())
 	var errRes error
 	_ = repo.DropFn(ctx, func(k string, v []byte) (bool, error) {
-		var (
-			key        string
-			typeToSend string
-			drop       bool
-		)
-		switch {
-		case strings.HasPrefix(k, gauge):
-			key = strings.TrimPrefix(k, gauge)
-			typeToSend = gauge
-			// Drop this entry, because we will send it and have a new value every time.
-			drop = true
-		case strings.HasPrefix(k, counter):
-			// Do not drop it because we need this value on the next pool call.
-			key = strings.TrimPrefix(k, counter)
-			typeToSend = counter
-		default:
+		typeToSend, key, drop, err := parseKey(k)
+		if err != nil {
+			return false, nil
+		}
+		if mtype != "" && mtype != typeToSend {
 			return false, nil
 		}
 
+		metric, err := dataToMetrics(typeToSend, key, v)
+		if err != nil {
+			errRes = multierr.Append(errRes,
+				fmt.Errorf("failed converting data to metric for %s(%s); %w", mtype, k, err))
+			return false, nil
+		}
+		buf, err := easyjson.Marshal(metric)
+		if err != nil {
+			errRes = multierr.Append(errRes, err)
+			return false, nil
+		}
+		res[k] = buf
+		return drop, nil
+	})
+	if errRes != nil {
+		return nil, errRes
+	}
+	return res, nil
+}
+
+func serializeMetrics(ctx context.Context, mtype string, repo repository, wc writerCloser) error {
+	var errRes error
+	_ = repo.DropFn(ctx, func(k string, v []byte) (bool, error) {
+		typeToSend, key, drop, err := parseKey(k)
+		if err != nil {
+			return false, nil
+		}
 		if mtype != "" && mtype != typeToSend {
 			return false, nil
 		}
@@ -254,6 +302,23 @@ func serializeMetrics(ctx context.Context, mtype string, repo repository, wc wri
 		return drop, nil
 	})
 	return errRes
+}
+
+func parseKey(k string) (mtype string, id string, drop bool, err error) {
+	switch {
+	case strings.HasPrefix(k, gauge):
+		id = strings.TrimPrefix(k, gauge)
+		mtype = gauge
+		// Drop this entry, because we will send it and have a new value every time.
+		drop = true
+	case strings.HasPrefix(k, counter):
+		// Do not drop it because we need this value on the next pool call.
+		id = strings.TrimPrefix(k, counter)
+		mtype = counter
+	default:
+		return "", "", false, errors.New("unknown metric type")
+	}
+	return mtype, id, drop, nil
 }
 
 func dataToMetrics(mtype, name string, d []byte) (transport.Metrics, error) {
@@ -301,15 +366,6 @@ func withRetryOnErr(ctx context.Context, cnt int, fn func() error) error {
 		}
 	}
 	return err
-}
-
-func (c *Config) setSrcIP(client *httpclient.Client, log logger) {
-	addr, err := utils.GetClientAddr(client)
-	if err != nil {
-		log.Error("Failed to get client IP address:", err.Error())
-		return
-	}
-	c.clientIP = addr
 }
 
 type logger interface {

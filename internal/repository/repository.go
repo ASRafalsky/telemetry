@@ -38,6 +38,12 @@ func (r *ExtendedRepository) Set(key string, value []byte) {
 	r.newData.Store(true)
 }
 
+// Merge sets key value pair from the source map.
+func (r *ExtendedRepository) Merge(src map[string][]byte) {
+	r.cache.Merge(src)
+	r.newData.Store(true)
+}
+
 // IsReady returns true if ExtendedRepository contains new data.
 func (r *ExtendedRepository) IsReady() bool {
 	return r.newData.Load()
@@ -125,6 +131,9 @@ func (r *ExtendedRepository) Sync(ctx context.Context) error {
 	if r.db == nil {
 		return nil
 	}
+	if !r.IsReady() {
+		return nil
+	}
 	p := make([]postgres.Pair, r.cache.Size())
 	if err := r.cache.DropFn(ctx, func(k string, v []byte) (bool, error) {
 		var drop bool
@@ -151,6 +160,7 @@ func (r *ExtendedRepository) CacheSize() int {
 
 type cache interface {
 	Set(k string, v []byte)
+	Merge(src map[string][]byte)
 	Get(k string) ([]byte, bool)
 	ForEach(ctx context.Context, fn func(k string, v []byte) error) error
 	DropFn(ctx context.Context, fn func(k string, v []byte) (bool, error)) error

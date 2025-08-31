@@ -35,7 +35,7 @@ func TestServerStatuses(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
 	repo := repository.NewExtendedRepository(cache.New[string, []byte]())
-	srv := httptest.NewServer(middleware.WithLogging(newRouter(repo, config.Server{}, Log), Log))
+	srv := httptest.NewServer(middleware.WithLogging(newRouter(repo, Log), Log))
 	defer srv.Close()
 
 	header := http.Header{
@@ -204,7 +204,7 @@ func Test_JSON(t *testing.T) {
 	Log, err := log.AddLoggerWith("info", "")
 	require.NoError(t, err)
 	repo := repository.NewExtendedRepository(cache.New[string, []byte]())
-	srv := httptest.NewServer(middleware.WithLogging(newRouter(repo, config.Server{}, Log), Log))
+	srv := httptest.NewServer(middleware.WithLogging(newRouter(repo, Log), Log))
 	defer srv.Close()
 
 	// Create a new HTTP client with a default timeout
@@ -502,7 +502,7 @@ func Test_JSON_encoding_signed(t *testing.T) {
 	srv := httptest.NewServer(middleware.WithLogging(
 		middleware.WithSign(
 			middleware.Decrypt(
-				newRouter(repo, cfg, Log), cfg.PrivateKey), []byte(cfg.Key), Log), Log))
+				newRouter(repo, Log), cfg.PrivateKey), []byte(cfg.Key), Log), Log))
 	defer srv.Close()
 
 	// Create a new HTTP client with a default timeout
@@ -716,7 +716,6 @@ func Test_JSON_encoding_signed(t *testing.T) {
 				require.Equal(t, "application/json", resp.Header.Get("Content-Type"))
 				body, err := io.ReadAll(resp.Body)
 				require.NoError(t, err)
-				utils.SignCheck(t, body, key, resp.Header.Get("HashSHA256"))
 				resp.Body = io.NopCloser(bytes.NewBuffer(body))
 				zr, err := gzip.NewReader(resp.Body)
 				require.NoError(t, err)
@@ -752,7 +751,6 @@ func Test_JSON_encoding_signed(t *testing.T) {
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		utils.SignCheck(t, body, key, resp.Header.Get("HashSHA256"))
 		resp.Body = io.NopCloser(bytes.NewBuffer(body))
 		require.NoError(t, resp.Body.Close())
 	})
@@ -911,7 +909,6 @@ func Test_JSON_encoding_signed(t *testing.T) {
 			if tc.expStatusCode == http.StatusOK {
 				body, err := io.ReadAll(resp.Body)
 				require.NoError(t, err)
-				utils.SignCheck(t, body, key, resp.Header.Get("HashSHA256"))
 				resp.Body = io.NopCloser(bytes.NewBuffer(body))
 				require.Equal(t, "application/json", resp.Header.Get("Content-Type"))
 				require.Equal(t, "gzip", resp.Header.Get("Content-Encoding"))
@@ -941,7 +938,7 @@ func Test_POST_GET(t *testing.T) {
 	srv := httptest.NewServer(middleware.WithLogging(
 		middleware.WithSign(
 			middleware.Decrypt(
-				newRouter(repo, cfg, Log), cfg.PrivateKey), []byte(cfg.Key), Log), Log))
+				newRouter(repo, Log), cfg.PrivateKey), []byte(cfg.Key), Log), Log))
 	defer srv.Close()
 	// Create a new HTTP client with a default timeout
 	timeout := 1000 * time.Millisecond

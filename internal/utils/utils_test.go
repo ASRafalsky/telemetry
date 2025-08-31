@@ -13,3 +13,9 @@ func TestGetClientAddr(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, addr)
 }
+
+func TestGetAddr(t *testing.T) {
+	addr, err := GetAddr("tcp")
+	require.NoError(t, err)
+	require.NotEmpty(t, addr)
+}

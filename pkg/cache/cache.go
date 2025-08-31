@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"maps"
 	"sync"
 )
 
@@ -25,6 +26,18 @@ func (m *MemStorage[K, V]) Set(k K, v V) {
 	defer m.mx.Unlock()
 
 	m.storage[k] = v
+}
+
+func (m *MemStorage[K, V]) Merge(data map[K]V) {
+	m.mx.Lock()
+	defer m.mx.Unlock()
+	maps.Copy(m.storage, data)
+}
+
+func (m *MemStorage[K, V]) ToMap() map[K]V {
+	m.mx.RLock()
+	defer m.mx.RUnlock()
+	return maps.Clone(m.storage)
 }
 
 // Get returns value and true from the MemStorage if it exists, or empty value and false.

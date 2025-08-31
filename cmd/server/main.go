@@ -4,12 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"google.golang.org/grpc"
+
+	_ "google.golang.org/grpc/encoding/gzip"
+
+	"github.com/ASRafalsky/telemetry/internal/interceptor"
+	pb "github.com/ASRafalsky/telemetry/proto"
 
 	"github.com/ASRafalsky/telemetry/internal/config"
 	"github.com/ASRafalsky/telemetry/internal/diagnostic"
@@ -59,12 +66,12 @@ func main() {
 
 	go func() {
 		diagCfg := newDiagnosticCfg(cfg)
-		runServer(ctx, cancel, diagnosticRouter(ctx, diagCfg.Diag), diagCfg, Log)
+		runServer(ctx, cancel, diagnosticRouter(ctx, diagCfg.Diag), diagCfg, Log, repo)
 	}()
 	const srcIPInHeader = true
 	runServer(ctx, cancel, middleware.WithLogging(middleware.CheckCIDR(middleware.WithSign(
 		middleware.Decrypt(
-			newRouter(repo, cfg, Log), cfg.PrivateKey), []byte(cfg.Key), Log), srcIPInHeader, cfg.CIDR), Log), cfg, Log)
+			newRouter(repo, Log), cfg.PrivateKey), []byte(cfg.Key), Log), srcIPInHeader, cfg.CIDR), Log), cfg, Log, repo)
 
 	Log.Info("Telemetry Server stopped.")
 }
@@ -75,17 +82,44 @@ func runServer(
 	handler http.Handler,
 	cfg config.Server,
 	logger *log.Logger,
+	repo dataRepository,
 ) {
 	logger.Info("Starting server", cfg.Addr)
 
-	srv := http.Server{
-		Addr:    cfg.Addr,
-		Handler: handler,
+	var srv interface{}
+	if cfg.GRPC {
+		srv = grpc.NewServer(
+			grpc.MaxConcurrentStreams(100500),
+			grpc.UnaryInterceptor(interceptor.NewInterceptorsChain(
+				true, cfg.CIDR,
+				[]byte(cfg.Key),
+				cfg.PrivateKey,
+				logger,
+			)))
+	} else {
+		srv = &http.Server{
+			Addr:    cfg.Addr,
+			Handler: handler,
+		}
 	}
 
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Fatal("Failed to start server:", err.Error())
+		if cfg.GRPC {
+			listen, err := net.Listen("tcp", cfg.Addr)
+			if err != nil {
+				logger.Fatal(err.Error())
+			}
+			s := srv.(*grpc.Server)
+			pb.RegisterBDServer(s, handlers.DBServer{Repo: repo})
+			pb.RegisterMetricsServer(s, handlers.MetricsServer{Repo: repo})
+			pb.RegisterMetricsMultiServer(s, handlers.MetricsMultiServer{Repo: repo})
+			if err := s.Serve(listen); err != nil {
+				logger.Fatal(err.Error())
+			}
+		} else {
+			if err := srv.(*http.Server).ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Fatal("Failed to start server:", err.Error())
+			}
 		}
 		cancel()
 	}()
@@ -97,13 +131,19 @@ func runServer(
 
 	srvCtx, srvCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer srvCancel()
-	if err := srv.Shutdown(srvCtx); err != nil {
-		logger.Fatal("Failed to shutdown server:", err.Error())
+
+	if cfg.GRPC {
+		srv.(*grpc.Server).GracefulStop()
+	} else {
+		if err := srv.(*http.Server).Shutdown(srvCtx); err != nil {
+			logger.Fatal("Failed to shutdown server:", err.Error())
+		}
 	}
+
 	logger.Info("Server shutdown completed")
 }
 
-func newRouter(repo dataRepository, cfg config.Server, logger *log.Logger) http.Handler {
+func newRouter(repo dataRepository, logger *log.Logger) http.Handler {
 	r := chi.NewRouter()
 	r.Route("/", func(r chi.Router) {
 		r.Route("/update", func(r chi.Router) {
@@ -144,6 +184,7 @@ func diagnosticRouter(ctx context.Context, cfg config.Diagnostics) http.Handler 
 
 type dataRepository interface {
 	Set(k string, v []byte)
+	Merge(src map[string][]byte)
 	Get(ctx context.Context, k string) ([]byte, error)
 	ForEach(ctx context.Context, fn func(k string, v []byte) error) error
 	Delete(ctx context.Context, k string) error

@@ -49,12 +49,14 @@ func newPollerCfg(cfg config.Agent) poller.Config {
 	}
 }
 
-func newSenderCfg(cfg config.Agent) reporter.Config {
+func newSenderCfg(cfg config.Agent, clientIP string) reporter.Config {
 	res := reporter.Config{
 		Interval:  cfg.ReportPeriod,
 		Address:   "http://" + cfg.Addr,
 		Key:       cfg.Key,
 		RateLimit: cfg.RateLimit,
+		ClientIP:  clientIP,
+		GRPC:      cfg.GRPC,
 	}
 
 	var err error

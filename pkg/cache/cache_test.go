@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"slices"
 	"sync"
 	"testing"
@@ -150,4 +151,102 @@ func Example() {
 	// 5
 	// Size after delete all even:
 	// 0
+}
+
+func BenchmarkCacheSet(b *testing.B) {
+	const cnt = 100
+	ms := New[int, int]()
+
+	var keys []int
+	for i := range cnt {
+		keys = append(keys, i)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		wg.Done()
+		for {
+			if ctx.Err() != nil {
+				return
+			}
+			ms.Get(rand.Int())
+		}
+	}()
+	wg.Wait()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for i, k := range keys {
+			ms.Set(k, i)
+		}
+	}
+}
+
+func BenchmarkSyncMap(b *testing.B) {
+	const cnt = 100
+
+	var keys []int
+	for i := range cnt {
+		keys = append(keys, i)
+	}
+	var m sync.Map
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		wg.Done()
+		for {
+			if ctx.Err() != nil {
+				return
+			}
+			m.Load(rand.Int())
+		}
+	}()
+	wg.Wait()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for i, k := range keys {
+			m.Store(k, i)
+		}
+	}
+}
+
+func BenchmarkCacheMerge(b *testing.B) {
+	const cnt = 100
+	ms := New[int, int]()
+
+	var keys []int
+	for i := range cnt {
+		keys = append(keys, i)
+	}
+	mapToMerge := map[int]int{}
+	for i := range keys {
+		mapToMerge[i] = i
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		wg.Done()
+		for {
+			if ctx.Err() != nil {
+				return
+			}
+			ms.Get(rand.Int())
+		}
+	}()
+	wg.Wait()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ms.Merge(mapToMerge)
+	}
 }

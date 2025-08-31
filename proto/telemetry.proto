@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package telemetry;
+
+option go_package = "telemetry/proto";
+
+enum Mtype {
+    GAUGE = 0;
+    COUNTER = 1;
+}
+
+message MetricsList {
+  map<string, bytes> values = 1;
+}
+
+message SetMetricsRequest {
+  bytes values = 2;
+}
+
+message SetMetricsResponse {
+  string error = 1;
+}
+
+message GetMetricsRequest {
+  Mtype mtype = 1;
+  repeated string id = 2;
+}
+
+message GetMetricsResponse {
+  Mtype mtype = 1;
+  string id = 2;
+  bytes value = 3;
+}
+
+message BDPingRequest {}
+
+message BDPingResponse {
+  string error = 1;
+}
+
+service Metrics {
+  rpc Set(SetMetricsRequest) returns (SetMetricsResponse);
+}
+
+service MetricsMulti {
+  rpc Get(GetMetricsRequest) returns (stream GetMetricsResponse);
+}
+
+service BD {
+  rpc Ping(BDPingRequest) returns (BDPingResponse);
+}
