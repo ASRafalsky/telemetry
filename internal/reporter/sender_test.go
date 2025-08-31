@@ -61,7 +61,7 @@ func TestSend(t *testing.T) {
 			body, err := io.ReadAll(r.Body)
 			require.NoError(t, err)
 			r.Body = io.NopCloser(bytes.NewBuffer(body))
-			utils.SignCheck(t, body, []byte(secretKey), r.Header.Get("HashSHA256"))
+			utils.SignCheckTest(t, body, []byte(secretKey), r.Header.Get("HashSHA256"))
 			switch r.Header.Get("Content-Encoding") {
 			case "gzip":
 				zr, err := gzip.NewReader(r.Body)
@@ -198,7 +198,7 @@ func prepareData(t *testing.T, repo repository, mType, key string) (http.Header,
 		"Content-Encoding": []string{"gzip"},
 	}
 
-	signature, err := sign(bufToSend.Bytes(), []byte(key))
+	signature, err := utils.Sign(bufToSend.Bytes(), []byte(key))
 	require.NoError(t, err)
 	header.Set("HashSHA256", signature)
 	return header, bufToSend

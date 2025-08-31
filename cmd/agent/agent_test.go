@@ -63,7 +63,7 @@ func TestAgent(t *testing.T) {
 			body, err := io.ReadAll(r.Body)
 			require.NoError(t, err)
 
-			utils.SignCheck(t, body, []byte(key), r.Header.Get("HashSHA256"))
+			utils.SignCheckTest(t, body, []byte(key), r.Header.Get("HashSHA256"))
 
 			data, err := privKey.Decrypt(nil, body, nil)
 			require.NoError(t, err)
@@ -131,7 +131,6 @@ func TestAgent(t *testing.T) {
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
-	client := newClient()
 	ctx, cancel := context.WithCancel(context.Background())
 
 	gaugeRepo := cache.New[string, []byte]()
@@ -150,13 +149,15 @@ func TestAgent(t *testing.T) {
 	pollerModule.Run(ctx, poller.GetPSCPUMetrics, gaugeRepo, logeer)
 	pollerModule.Run(ctx, poller.GetCounterMetrics, counterRepo, logeer)
 
-	senderCfg1 := newSenderCfg(config.Agent{
+	cfg := config.Agent{
 		CommonFields: config.CommonFields{
 			Key:    key,
 			Crypto: "./testdata/public.key",
 		},
 		RateLimit: 1,
-	})
+	}
+	client, clientIP := newClient(cfg, logeer)
+	senderCfg1 := newSenderCfg(cfg, clientIP)
 	senderCfg1.Interval = time.Duration(100) * time.Millisecond
 	senderCfg1.Address = srv.URL
 	senderCfg2 := newSenderCfg(config.Agent{
@@ -166,7 +167,7 @@ func TestAgent(t *testing.T) {
 			Crypto: "./testdata/public.key",
 		},
 		RateLimit: 4,
-	})
+	}, clientIP)
 	senderCfg2.Interval = time.Duration(100) * time.Millisecond
 	senderCfg2.Address = srv.URL
 	go reporter.Send(ctx, gauge, senderCfg1, client, gaugeRepo, logeer)

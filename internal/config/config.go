@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"errors"
+	"net"
 	"os"
 	"strconv"
 	"time"
@@ -35,6 +36,7 @@ type CommonFields struct {
 	LogPath  string `env:"LOG_PATH" json:"log_path"`
 	Key      string `env:"KEY" json:"key"`
 	Crypto   string `env:"CRYPTO_KEY" json:"crypto_key"`
+	GRPC     bool   `env:"GRPC" json:"grpc"`
 }
 
 type DB struct {
@@ -51,6 +53,8 @@ type Server struct {
 	StorePeriod    time.Duration
 	StorePeriodStr string `env:"STORE_INTERVAL" json:"store_interval"`
 	Restore        bool   `env:"RESTORE" json:"restore"`
+	Subnet         string `env:"TRUSTED_SUBNET" json:"trusted_subnet"`
+	CIDR           *net.IPNet
 	PrivateKey     *rsa.PrivateKey
 }
 

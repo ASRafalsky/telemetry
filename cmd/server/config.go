@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"flag"
+	"net"
 	"path/filepath"
 	"runtime"
 
@@ -32,9 +33,11 @@ func updateCfg() (config.Server, error) {
 	flag.StringVar(&cfg.StorePeriodStr, "i", cfg.StorePeriodStr, "dump interval in seconds")
 	flag.StringVar(&cfg.DB.DSN, "d", cfg.DB.DSN, "database address")
 	flag.StringVar(&cfg.DB.MigrationsPath, "m", migrationPath, "path to migrations")
-	flag.StringVar(&cfg.DB.MigrationsTable, "t", config.DefaultEmptyStr, "name of migration table, where migrator writes own data")
+	flag.StringVar(&cfg.DB.MigrationsTable, "mt", config.DefaultEmptyStr, "name of migration table, where migrator writes own data")
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "key for sign")
 	flag.StringVar(&cfg.Crypto, "crypto-key", cfg.Crypto, "private key path")
+	flag.StringVar(&cfg.Subnet, "t", cfg.Crypto, "trusted subnet")
+	flag.BoolVar(&cfg.GRPC, "g", cfg.GRPC, "use grpc")
 	flag.Parse()
 
 	err := env.Parse(&cfg)
@@ -44,6 +47,12 @@ func updateCfg() (config.Server, error) {
 
 	if err = cfg.ParseDuration(); err != nil {
 		return cfg, multierr.Append(err, errReadCfg)
+	}
+
+	if cfg.Subnet != "" {
+		if _, cfg.CIDR, err = net.ParseCIDR(cfg.Subnet); err != nil {
+			return cfg, multierr.Append(err, errReadCfg)
+		}
 	}
 
 	cfg.PrivateKey, err = utils.ParsePrivateKey(cfg.Crypto)

@@ -155,6 +155,7 @@ type logger interface {
 }
 
 type repository interface {
+	ToMap() map[string][]byte
 	Set(k string, v []byte)
 	Get(k string) ([]byte, bool)
 }

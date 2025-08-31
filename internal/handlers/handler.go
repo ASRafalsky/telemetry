@@ -80,7 +80,7 @@ func GaugePostHandler(repo repository) func(http.ResponseWriter, *http.Request) 
 		}
 
 		gVal := float64(value)
-		if _, err := gaugePostDataHandler(repo, transport.Metrics{
+		if _, err := gaugeDataHandler(repo, transport.Metrics{
 			MType: types.GaugeType,
 			ID:    strings.ToLower(key),
 			Value: &gVal,
@@ -138,7 +138,7 @@ func CounterPostHandler(repo repository) func(http.ResponseWriter, *http.Request
 		}
 
 		delta := int64(value)
-		if _, err := counterPostDataHandler(req.Context(), repo, transport.Metrics{
+		if _, err := counterDataHandler(req.Context(), repo, transport.Metrics{
 			MType: types.CounterType,
 			ID:    strings.ToLower(key),
 			Delta: &delta,
@@ -235,6 +235,7 @@ func getName(req *http.Request) string {
 type repository interface {
 	Set(k string, v []byte)
 	Get(ctx context.Context, k string) ([]byte, error)
+	Merge(src map[string][]byte)
 	ForEach(ctx context.Context, fn func(k string, v []byte) error) error
 	Delete(ctx context.Context, k string) error
 	Ping(ctx context.Context) error
